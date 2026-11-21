@@ -98,7 +98,24 @@ Turn it on with the **Advanced Turn Order** checkbox under *House Rules* in the 
    order position for the next round. Each new round's order is the pass order of the
    previous round.
 
+After *Setup*, the draft order is revealed one player at a time before the first choice.
+The last player in the draft has no real choice, so they get the remaining positions
+automatically.
+
 While drafting and selecting factions, a panel shows all the positions. During play, the
 built-in turn indicator (top right) shows the current order, with the next round's order
 listed below it. Passed players still get turns, so they can take reactions as in the base
 rules. To skip them instead, set `ATO_KEEP_TURNS_AFTER_PASS = false` in `scripts/Global.-1.lua`.
+
+## Player colors and hot seat
+
+The table has seats for six player colors: **White, Red, Yellow, Blue, Green and Purple**.
+Black is the game master's seat and doesn't take part.
+
+Don't seat players at any other color. Orange has no seat at this table, and Pink, Teal
+and Brown aren't known to the mod. A player at one of those colors breaks faction setup
+(for example with *"You already selected nil"*) and the Advanced Turn Order draft.
+
+**Hot seat** works with the Advanced Turn Order: the screen moves to whoever is due to
+choose, pick a faction or play. When you set up hot seat, give each player one of the
+six colors above.
