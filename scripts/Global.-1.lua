@@ -621,10 +621,51 @@ end
 -- configure if objects are interactable (tables extensions, game board, influence bag, ...)
 function setInteractivity(isInteractable)
   Objects_Interactable = isInteractable
-  local object = nil
-  for _,GUID in pairs(DisabledGUIDs) do getObjectFromGUID(GUID).interactable = isInteractable end
-  for _,GUID in pairs(BehindTheScenes_GUIDs) do getObjectFromGUID(GUID).interactable = isInteractable end
-  for _,GUID in pairs(ButtonGUIDs) do getObjectFromGUID(GUID).interactable = isInteractable end
+  -- skip objects that no longer exist (picked faction buttons destroy themselves)
+  for _, list in ipairs({DisabledGUIDs, BehindTheScenes_GUIDs, ButtonGUIDs}) do
+    for _, GUID in pairs(list) do
+      local object = getObjectFromGUID(GUID)
+      if object ~= nil then object.interactable = isInteractable end
+    end
+  end
+end
+
+
+-- after all factions are selected: remove the selection buttons and move the selection
+-- mat and faction display tiles under the table
+local RaceSelection_GUIDs = {
+  'ac4050', -- faction selection mat
+  -- faction display tiles (by column: Eridani, Terran Red, Planta, ...)
+  '4f1d06', '9157e7', 'dece33', 'ffd31a',
+  'd776b2', '57de7f', 'a7d9af', '81e0b9',
+  'ab763d', '00f32d', '3d6ec0', '5b204d',
+  'ed7fae', '57f866', 'aa470f', 'a59af5', -- Rho Indi, Exiles, Magellan, Lyra
+  'f3dc1f'  -- Pyxis Unity
+}
+
+function hideRaceSelection()
+  for _, GUID in ipairs(ButtonGUIDs) do
+    local button = getObjectFromGUID(GUID)
+    if button ~= nil then button.destruct() end
+  end
+  for _, GUID in ipairs(RaceSelection_GUIDs) do
+    local object = getObjectFromGUID(GUID)
+    if object ~= nil then
+      local position = object.getPosition()
+      object.setLock(true)
+      object.setPosition({position.x, -5, position.z})
+      object.interactable = false
+    end
+  end
+end
+
+-- number of players that have selected a faction
+function countSelectedFactions()
+  local count = 0
+  for _, faction in pairs(PlayerSelection) do
+    if faction ~= 'none' then count = count + 1 end
+  end
+  return count
 end
 
 function toggleInteractivity()
@@ -701,6 +742,13 @@ function PlayerSetup(parameters)
   -- hand the pick to the next player once this setup has run (even if part of it fails)
   local pickedColor = PlayerColor
   Wait.time(function() ATO_racePicked(pickedColor) end, 1)
+
+  -- standard setup: hide the selection area once every player has a faction
+  -- (the advanced turn order does this itself when faction selection ends)
+  if not (settings.AdvancedTurnOrder and ATO.phase ~= "off") and settings.setupCompleted
+     and countSelectedFactions() >= settings.PlayerCount then
+    Wait.time(hideRaceSelection, 3)
+  end
   print(Player[PlayerColor].steam_name, ' selected ', Faction.Name)
 
   local Box = getObjectFromGUID(Faction.Box_GUID)
@@ -1683,9 +1731,13 @@ end
 function ATO_revealNext()
   if ATO.phase ~= "reveal" then return end  -- setup was reset or the game was reloaded
 
-  ATO.revealed = ATO.revealed + 1
-  local color = ATO.draftOrder[ATO.revealed]
-  broadcastToAll(string.format("%d. %s", ATO.revealed, ATO_name(color)), color)
+  -- the last two are revealed together (once the second to last is known, so is the last)
+  local count = (#ATO.draftOrder - ATO.revealed == 2) and 2 or 1
+  for _ = 1, count do
+    ATO.revealed = ATO.revealed + 1
+    local color = ATO.draftOrder[ATO.revealed]
+    broadcastToAll(string.format("%d. %s", ATO.revealed, ATO_name(color)), color)
+  end
   ATO_updateUI()
 
   if ATO.revealed < #ATO.draftOrder then
@@ -1870,6 +1922,7 @@ function ATO_startPlay()
   ATO.phase = "play"
   broadcastToAll("All factions selected: drawing the starting technologies.")
   drawStartingTechs()
+  Wait.time(hideRaceSelection, 2)  -- let the last faction's setup finish first
   ATO.round = tonumber(RoundMarker.getDescription()) or 1
   ATO.order = ATO_copy(ATO.turnSlots)
   ATO.passOrder = {}
