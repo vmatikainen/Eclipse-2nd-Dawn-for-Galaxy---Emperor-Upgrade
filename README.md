@@ -103,8 +103,8 @@ The last player in the draft has no real choice, so they get the remaining posit
 automatically.
 
 While drafting and selecting factions, a panel shows all the positions. During play, the
-built-in turn indicator (top right) shows the current order, with the next round's order
-listed below it. Passed players still get turns, so they can take reactions as in the base
+built-in turn indicator (top right) shows the current order, and a small *Next round* list
+at the top of the screen, just left of it, shows the order for the next round. Passed players still get turns, so they can take reactions as in the base
 rules. To skip them instead, set `ATO_KEEP_TURNS_AFTER_PASS = false` in `scripts/Global.-1.lua`.
 
 ## Player colors and hot seat

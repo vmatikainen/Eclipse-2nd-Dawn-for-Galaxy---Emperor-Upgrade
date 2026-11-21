@@ -1523,8 +1523,8 @@ end
 --     "Actions" card face down during their own turn: their turn ends immediately and they
 --     take the best free turn order position for the next round.
 -- The draft panel is shown during the draft and faction selection. During play, the
--- built-in turn indicator (top right) shows the current order, with the next round's
--- order listed below it.
+-- built-in turn indicator (top right) shows the current order, and a small list at the
+-- top of the screen, left of it, shows the next round's order.
 
 -- true: players that passed still get turns (to take reactions), as in the base rules
 -- false: players that passed are skipped until the next round
@@ -1654,6 +1654,11 @@ function ATO_startDraft()
     broadcastToAll(string.format("Advanced Turn Order: %d players are seated, but the player count is set to %d. The draft uses the seated players.",
       #players, settings.PlayerCount), {1, 0.8, 0.4})
   end
+
+  -- the pass order decides the turn order, so the "Direction of Play" card is not used
+  local direction = getObjectFromGUID(TurnDirection_GUID)
+  if direction ~= nil then direction.destruct() end
+  TurnDirection = nil
 
   local actionCards = ATO.actionCards  -- keep cards registered before setup
   ATO = ATO_defaultState()
@@ -1928,6 +1933,9 @@ function ATO_pass(color, card, flipper)
   broadcastToAll(string.format("%s passes and takes turn order position #%d for the next round.",
     ATO_name(color), #ATO.passOrder), color)
 
+  -- the first player to pass starts the next round: move the start player tile to them now
+  if #ATO.passOrder == 1 then placeFirstPlayerTile(color) end
+
   if #ATO.passOrder >= #ATO.order then
     broadcastToAll("All players have passed. Finish the round and press 'Next Round'.")
   end
@@ -2076,7 +2084,7 @@ function ATO_updateUI()
   end
 
   -- during play: the built-in turn indicator shows the current order,
-  -- this small list below it shows the order for the next round
+  -- this small list at the top of the screen shows the order for the next round
   if enabled and ATO.phase == "play" then
     UI.setAttribute("ATO_NextPanel", "active", "true")
     UI.setValue("ATO_NextText", "<b>Next round</b>\n" .. ATO_slotLines(ATO.passOrder, #ATO.order))

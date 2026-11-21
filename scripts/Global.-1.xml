@@ -58,13 +58,13 @@
 	</VerticalLayout>
 </Panel>
 
-<!-- Advanced Turn Order: next round's order, shown below the built-in turn indicator during play -->
+<!-- Advanced Turn Order: next round's order during play; top edge of the screen, one panel width from the right edge -->
 <Panel id="ATO_NextPanel"
 	width="180"
 	height="140"
 	active="false"
 	rectAlignment="UpperRight"
-	offsetXY="-10 -90"
+	offsetXY="-180 0"
 	allowDragging="true"
 	returnToOriginalPositionWhenReleased="false"
 	color="rgba(0.15, 0.15, 0.15, 0.8)">
