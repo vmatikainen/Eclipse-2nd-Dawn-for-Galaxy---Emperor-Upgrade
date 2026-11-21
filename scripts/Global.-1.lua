@@ -303,6 +303,7 @@ function onLoad(saveData)
     end
 
     ATO_updateUI()
+    ATO_resume()
 end
 
 
@@ -677,16 +678,22 @@ function PlayerSetup(parameters)
   PlayerColor = parameters.PlayerColor
   Faction = parameters.Faction
 
+  -- advanced turn order: factions are picked in the drafted race pick order
+  -- (in hot seat the pick is made for the player whose turn it is, whoever clicked)
+  local allowed, pickColor = ATO_canPickRace(PlayerColor)
+  if not allowed then return false end
+  PlayerColor = pickColor
+
   -- check if the player already selected a faction
   if PlayerSelection[PlayerColor] ~= 'none' then
     print('You already selected ', PlayerSelection[PlayerColor], '. You can only select one faction.')
     return false
   end
 
-  -- advanced turn order: factions are picked in the drafted race pick order
-  if not ATO_canPickRace(PlayerColor) then return false end
-
   PlayerSelection[PlayerColor] = Faction.Name
+  -- hand the pick to the next player once this setup has run (even if part of it fails)
+  local pickedColor = PlayerColor
+  Wait.time(function() ATO_racePicked(pickedColor) end, 1)
   print(Player[PlayerColor].steam_name, ' selected ', Faction.Name)
 
   local Box = getObjectFromGUID(Faction.Box_GUID)
@@ -788,7 +795,6 @@ function PlayerSetup(parameters)
     end
   end
 
-  ATO_racePicked(PlayerColor)
   return true
 end
 
@@ -1517,9 +1523,14 @@ end
 -- false: players that passed are skipped until the next round
 local ATO_KEEP_TURNS_AFTER_PASS = true
 
+-- timing of the draft order reveal after "Setup" is pressed (seconds)
+local ATO_REVEAL_INTRO_SECONDS = 4   -- explanation before the first player is revealed
+local ATO_REVEAL_STEP_SECONDS = 1.5  -- between revealed players, and before the draft starts
+
 function ATO_defaultState()
   return {
-    phase = "off",      -- "off", "draft", "race", "play"
+    phase = "off",      -- "off", "reveal", "draft", "race", "play"
+    revealed = 0,       -- how many players of the draft order have been revealed
     draftOrder = {},    -- colors, random order in which positions are drafted
     draftIndex = 1,
     choice = {},        -- color -> "race" or "turn"
@@ -1581,7 +1592,45 @@ function ATO_setTurns(order, current)
   Turns.order = order
   Turns.reverse_order = false
   Turns.pass_turns = true
-  if current ~= nil then Turns.turn_color = current end
+  if current == nil then return end
+  Turns.turn_color = current
+
+  -- TTS picks its own starting turn a few frames after turns are enabled or the order
+  -- changes, which can override the color set above: set it again once that has happened
+  Wait.frames(function()
+    if Turns.turn_color ~= current and (ATO_expectedTurnColor() == current or ATO.phase == "play") then
+      Turns.turn_color = current
+    end
+    ATO_syncHotseat(Turns.turn_color)
+    ATO_updateUI()
+  end, 10)
+end
+
+-- hot seat (or testing alone): everyone at the table is the same Steam account
+function ATO_isHotseat()
+  local players = Player.getPlayers()
+  if #players <= 1 then return true end
+  local steamId = players[1].steam_id
+  for _, p in ipairs(players) do
+    if p.steam_id ~= steamId then return false end
+  end
+  return true
+end
+
+-- in hot seat, move the shared screen to the given color
+function ATO_syncHotseat(color)
+  if color == nil or not ATO_isHotseat() then return end
+  local players = Player.getPlayers()
+  if #players ~= 1 then return end  -- hot seat already gives each color its own seat
+  local p = players[1]
+  if p.color ~= color then p.changeColor(color) end
+end
+
+-- whose turn it must be during the draft and faction selection (nil during play)
+function ATO_expectedTurnColor()
+  if ATO.phase == "draft" then return ATO.draftOrder[ATO.draftIndex] end
+  if ATO.phase == "race" then return ATO.raceSlots[ATO.raceIndex] end
+  return nil
 end
 
 
@@ -1602,19 +1651,55 @@ function ATO_startDraft()
   local actionCards = ATO.actionCards  -- keep cards registered before setup
   ATO = ATO_defaultState()
   ATO.actionCards = actionCards
-  ATO.phase = "draft"
+  ATO.phase = "reveal"
+  ATO.revealed = 0
   ATO.draftOrder = ATO_shuffle(players)
   for i = 1, #players do
     ATO.raceSlots[i] = false
     ATO.turnSlots[i] = false
   end
 
-  broadcastToAll("Advanced Turn Order - draft order (random): " .. ATO_numberedList(ATO.draftOrder))
+  -- tell everyone what is about to happen, then reveal the order one player at a time
+  broadcastToAll("Advanced Turn Order: the draft order will now be randomized.")
+  broadcastToAll("In draft order, each player picks either the best race pick position or the best turn order position.")
+  ATO_updateUI()
+  Wait.time(ATO_revealNext, ATO_REVEAL_INTRO_SECONDS)
+  return true
+end
 
+-- reveal the next player of the random draft order
+function ATO_revealNext()
+  if ATO.phase ~= "reveal" then return end  -- setup was reset or the game was reloaded
+
+  ATO.revealed = ATO.revealed + 1
+  local color = ATO.draftOrder[ATO.revealed]
+  broadcastToAll(string.format("%d. %s", ATO.revealed, ATO_name(color)), color)
+  ATO_updateUI()
+
+  if ATO.revealed < #ATO.draftOrder then
+    Wait.time(ATO_revealNext, ATO_REVEAL_STEP_SECONDS)
+  else
+    Wait.time(ATO_beginDraft, ATO_REVEAL_STEP_SECONDS)
+  end
+end
+
+-- the whole draft order is known: the first player chooses
+function ATO_beginDraft()
+  if ATO.phase ~= "reveal" then return end
+  ATO.phase = "draft"
+  ATO.revealed = #ATO.draftOrder
+
+  broadcastToAll("Draft order: " .. ATO_numberedList(ATO.draftOrder))
   ATO_setTurns(ATO_copy(ATO.draftOrder), ATO.draftOrder[1])
   ATO_announceDrafter()
   ATO_updateUI()
-  return true
+end
+
+-- after loading a game saved mid-reveal, skip straight to the draft
+function ATO_resume()
+  if not settings.AdvancedTurnOrder then return end
+  if ATO.phase == "reveal" then ATO_beginDraft() end
+  if ATO_isLastDrafter() then Wait.time(ATO_autoLastPick, ATO_REVEAL_STEP_SECONDS) end
 end
 
 -- best (first) and last free position of a track
@@ -1641,10 +1726,32 @@ function ATO_numberedList(slots)
   return table.concat(names, ", ")
 end
 
+function ATO_isLastDrafter()
+  return ATO.phase == "draft" and ATO.draftIndex == #ATO.draftOrder
+end
+
 function ATO_announceDrafter()
   local color = ATO.draftOrder[ATO.draftIndex]
+  if ATO_isLastDrafter() then
+    -- one free position left on each track: nothing to choose
+    broadcastToAll(string.format("%s gets the remaining positions: race pick #%d, turn order #%d",
+      ATO_name(color), ATO_firstFree(ATO.raceSlots), ATO_firstFree(ATO.turnSlots)), color)
+    Wait.time(ATO_autoLastPick, ATO_REVEAL_STEP_SECONDS)
+    return
+  end
   broadcastToAll(string.format("%s: take the best race pick (#%d) or the best turn order position (#%d)?",
     ATO_name(color), ATO_firstFree(ATO.raceSlots), ATO_firstFree(ATO.turnSlots)), color)
+end
+
+-- the last drafter gets the last free position of both tracks
+function ATO_autoLastPick()
+  if not ATO_isLastDrafter() then return end  -- already done, or the game was reset
+  local color = ATO.draftOrder[ATO.draftIndex]
+  ATO.choice[color] = "auto"
+  ATO.raceSlots[ATO_firstFree(ATO.raceSlots)] = color
+  ATO.turnSlots[ATO_firstFree(ATO.turnSlots)] = color
+  ATO.draftIndex = ATO.draftIndex + 1
+  ATO_finishDraft()
 end
 
 -- Step 2: draft buttons in the turn order panel
@@ -1652,9 +1759,11 @@ function ATO_ChooseRace(player) ATO_choose(player, "race") end
 function ATO_ChooseTurn(player) ATO_choose(player, "turn") end
 
 function ATO_choose(player, kind)
-  if ATO.phase ~= "draft" then return end
+  if ATO.phase ~= "draft" or ATO_isLastDrafter() then return end
   local color = ATO.draftOrder[ATO.draftIndex]
-  if player.color ~= color then
+  -- the choice always goes to the next player in the draft order; in hot seat the
+  -- shared screen may still be sitting in another color, so accept the click anyway
+  if player.color ~= color and not ATO_isHotseat() then
     player.broadcast("It is " .. ATO_name(color) .. "'s turn to choose.", {1, 0.4, 0.4})
     return
   end
@@ -1715,17 +1824,24 @@ function ATO_advanceRacePick()
 end
 
 -- called by PlayerSetup before a faction is given to a player
+-- returns: allowed, and the color the faction is for
 function ATO_canPickRace(color)
-  if not settings.AdvancedTurnOrder then return true end
-  if ATO.phase == "draft" then
+  if not settings.AdvancedTurnOrder then return true, color end
+  if ATO.phase == "reveal" or ATO.phase == "draft" then
     broadcastToColor("Finish the turn order draft before selecting factions.", color, {1, 0.4, 0.4})
-    return false
+    return false, color
   end
   if ATO.phase == "race" and ATO.raceSlots[ATO.raceIndex] ~= color then
-    broadcastToColor("It is " .. ATO_name(ATO.raceSlots[ATO.raceIndex]) .. "'s turn to select a faction.", color, {1, 0.4, 0.4})
-    return false
+    local expected = ATO.raceSlots[ATO.raceIndex]
+    if ATO_isHotseat() then
+      -- shared screen: the pick is for the player whose turn it is, placed at their seat
+      ATO_syncHotseat(expected)
+      return true, expected
+    end
+    broadcastToColor("It is " .. ATO_name(expected) .. "'s turn to select a faction.", color, {1, 0.4, 0.4})
+    return false, color
   end
-  return true
+  return true, color
 end
 
 -- called by PlayerSetup after a faction was given to a player
@@ -1826,8 +1942,26 @@ function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
 end
 
 function onPlayerTurn(player, previous_player)
-  if not (settings.AdvancedTurnOrder and ATO.phase == "play") then return end
+  if not settings.AdvancedTurnOrder then return end
+
+  -- during the draft and faction selection the turn follows the drafted order only:
+  -- undo any other turn change (TTS auto-start, someone pressing "End Turn")
+  local expected = ATO_expectedTurnColor()
+  if expected ~= nil then
+    if player ~= nil and player.color ~= expected and Player[expected] ~= nil
+       and (Player[expected].seated or ATO_isHotseat()) then
+      Wait.frames(function()
+        if ATO_expectedTurnColor() == expected then Turns.turn_color = expected end
+      end, 1)
+    end
+    ATO_syncHotseat(expected)
+    ATO_updateUI()
+    return
+  end
+
+  if ATO.phase ~= "play" then return end
   ATO_updateUI()
+  if player ~= nil then ATO_syncHotseat(player.color) end
   if ATO_KEEP_TURNS_AFTER_PASS or player == nil then return end
 
   -- skip players that already passed
@@ -1850,16 +1984,58 @@ function ATO_slotLines(slots, count, marker)
   return table.concat(lines, "\n")
 end
 
+-- size the panel so all of its text fits (up to 6 players: about 25 lines during the draft)
+local ATO_LINE_HEIGHT = 17     -- pixels per line at font size 13
+local ATO_CHARS_PER_LINE = 38  -- characters that fit on one line of the 266 px wide text
+
+-- length of a line without rich text tags such as <b>
+-- (plain string.find only: patterns like "(.-)\n" are "too complex" for TTS's Lua engine)
+function ATO_visibleLength(line)
+  local length, position = 0, 1
+  while true do
+    local tagStart = string.find(line, "<", position, true)
+    if tagStart == nil then return length + #line - position + 1 end
+    local tagEnd = string.find(line, ">", tagStart, true)
+    if tagEnd == nil then return length + #line - position + 1 end
+    length = length + tagStart - position
+    position = tagEnd + 1
+  end
+end
+
+function ATO_fitPanel(text, showButtons)
+  local lines, position = 0, 1
+  while position <= #text + 1 do
+    local lineEnd = string.find(text, "\n", position, true) or (#text + 1)
+    local line = string.sub(text, position, lineEnd - 1)
+    lines = lines + math.max(1, math.ceil(ATO_visibleLength(line) / ATO_CHARS_PER_LINE))
+    position = lineEnd + 1
+  end
+  local textHeight = lines * ATO_LINE_HEIGHT + 10
+  local buttonsHeight = showButtons and 96 or 10
+  UI.setAttribute("ATO_Text", "height", textHeight)
+  UI.setAttribute("ATO_Panel", "height", 40 + textHeight + buttonsHeight)
+end
+
 function ATO_updateUI()
   local enabled = settings.AdvancedTurnOrder and ATO.phase ~= "off"
   local count = math.max(#ATO.draftOrder, #ATO.order)
 
   -- draft / faction selection panel
-  if enabled and (ATO.phase == "draft" or ATO.phase == "race") then
+  if enabled and (ATO.phase == "reveal" or ATO.phase == "draft" or ATO.phase == "race") then
     local text = ""
     UI.setAttribute("ATO_Panel", "active", "true")
 
-    if ATO.phase == "draft" then
+    if ATO.phase == "reveal" then
+      local lines = {}
+      for i = 1, #ATO.draftOrder do
+        lines[i] = string.format("%d. %s", i, i <= ATO.revealed and ATO_name(ATO.draftOrder[i]) or "?")
+      end
+      text = "<b>Randomizing the draft order...</b>\n\n" ..
+        "In draft order, each player picks either the best race pick position or the best " ..
+        "turn order position, and gets the last free position of the other.\n\n" ..
+        "<b>Draft order</b>\n" .. table.concat(lines, "\n")
+      UI.setAttribute("ATO_Buttons", "active", "false")
+    elseif ATO.phase == "draft" then
       local color = ATO.draftOrder[ATO.draftIndex]
       text = "<b>Draft</b> - choosing: " .. ATO_name(color) .. "\n\n" ..
         "<b>Draft order</b>\n" .. ATO_slotLines(ATO.draftOrder, count) .. "\n\n" ..
@@ -1868,8 +2044,9 @@ function ATO_updateUI()
 
       UI.setAttribute("ATO_RaceButton", "text", string.format("Best race pick (#%d)", ATO_firstFree(ATO.raceSlots) or 0))
       UI.setAttribute("ATO_TurnButton", "text", string.format("Best turn order (#%d)", ATO_firstFree(ATO.turnSlots) or 0))
-      UI.setAttribute("ATO_Buttons", "visibility", color or "")
-      UI.setAttribute("ATO_Buttons", "active", "true")
+      -- only the drafter sees the buttons; in hot seat everyone shares one screen
+      UI.setAttribute("ATO_Buttons", "visibility", ATO_isHotseat() and "" or (color or ""))
+      UI.setAttribute("ATO_Buttons", "active", ATO_isLastDrafter() and "false" or "true")
     else
       local current = ATO.raceSlots[ATO.raceIndex]
       text = "<b>Faction selection</b> - picking: " .. ATO_name(current) .. "\n\n" ..
@@ -1884,6 +2061,7 @@ function ATO_updateUI()
     end
 
     UI.setValue("ATO_Text", text)
+    ATO_fitPanel(text, ATO.phase == "draft" and not ATO_isLastDrafter())
   else
     UI.setAttribute("ATO_Panel", "active", "false")
   end
