@@ -2,3 +2,8 @@
 !.gitignore
 !.gitattributes
 !2348417296.json
+!scripts/
+!scripts/*.lua
+!scripts/*.xml
+!tools/
+!tools/*.py

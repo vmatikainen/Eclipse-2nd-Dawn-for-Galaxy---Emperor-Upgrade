@@ -1,0 +1,15 @@
+money = {}
+materials = {}
+science = {}
+adv_money = {}
+adv_materials = {}
+adv_science = {}
+neutral = {{0.28306221188112, -0.324593082631726, -1.53117578726196},}
+adv_neutral = {{-0.883514234063725, -0.324421175412937, 1.4746978621168},}
+number = 242
+reputation = 3
+artifact = true
+ancients = 0
+discovery = false
+guardian = false
+warp = false

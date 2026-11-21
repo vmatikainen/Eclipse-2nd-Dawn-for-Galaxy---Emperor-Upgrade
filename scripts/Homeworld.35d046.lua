@@ -1,0 +1,14 @@
+money = {}
+materials = {{-1.61047759247542, 0.349980920553207, 1.46521802049023},}
+science = {}
+adv_money = {{-0.627994735520769, 0.350385218858719, -1.42521867896465},}
+adv_materials = {{-0.777912285634514, 0.350375980138779, 1.46468005783161},}
+adv_science = {}
+number = 234
+reputation = 3
+artifact = true
+ancients = 0
+discovery = false
+guardian = false
+warp = false
+orbital = {0.454868257045746, 0.349999636411667, 0.0154946157708764}

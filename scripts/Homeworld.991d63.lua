@@ -1,0 +1,15 @@
+number = 238
+reputation = 3
+artifact = true
+ancients = 0
+discovery = true
+guardian = true
+warp = false
+money = {{-0.734774830192327,0.350000113248825,-1.80682677298784},}
+materials = {{-1.97391810745001,0.35000005364418,1.81627006232738},}
+science = {{0.438604794070125,0.349999934434891,1.68374070689082},}
+adv_money = {}
+adv_materials = {}
+adv_science = {}
+neutral = {}
+adv_neutral = {}

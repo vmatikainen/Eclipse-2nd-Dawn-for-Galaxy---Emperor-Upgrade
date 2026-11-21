@@ -1,0 +1,168 @@
+<Defaults>
+	<Text fontSize="14" color="White" alignment="MiddleLeft"/>
+	<Toggle isOn="false" fontSize="14" textcolor="White" color="White" interactable="true" rectAlignment="MiddleLeft" offsetXY="5 0" height="30" tooltipBackgroundColor="rgba(0,0,0,0.95)"/>
+	<Button fontSize="14" textColor="Black" fontStyle="Bold" tooltipBackgroundColor="clear" shadow="Black" shadowDistance="1 -1"/>
+	<ToggleButton fontSize="14" textColor="Black" fontStyle="Bold" shadow="Black" shadowDistance="0 0"  colors="White|#d0d0d0|#7E7E7E|#000000" tooltipBackgroundColor="clear"/>
+
+	<Row class="LevelData" preferredHeight="0"/>
+	<Text class="Heading" fontSize="16" color="White" alignment="MiddleLeft" fontStyle="Bold"/>
+	<Button class="topButtons" width="25" height="25" rectAlignment="UpperLeft" color="#eeeeee" offsetXY="-3 -3"/>
+</Defaults>
+
+
+
+<!-- Button to re-open the Setup menu, initially INACTIVE -->
+<Panel id="Button_ShowSetup"
+	allowDragging="false"
+    height="50"
+    active = "false"
+	visibility= ""
+    offsetXY="250 0"
+    raycastTarget="true"
+    rectAlignment="UpperLeft"
+    returnToOriginalPositionWhenReleased="false"
+    showAnimation="FadeIn"
+    showAnimationDelay="2"
+    width="125">
+
+    <!-- The button container. -->
+    <VerticalLayout>
+        <!-- The button to open the setup panel. -->
+        <Button id="OpenSetupPanelButton" onClick="openSetupPanel">
+          Setup Options
+        </Button>
+    </VerticalLayout>
+</Panel>
+
+
+
+<Panel id="SetupPanel"
+	width="400"
+    height="600"
+	active = "false"
+    rectAlignment="UpperCenter"
+    offsetXY="0 -180"
+	visibility= "White|Red|Blue|Purple|Yellow|Green|Pink|Orange|Teal|Brown|Black|Grey"
+    hideAnimation="FadeOut"
+    animationDuration="0.5"
+    allowDragging="true"
+    returnToOriginalPositionWhenReleased="false"
+    color="rgba(0.3, 0.3, 0.3, 0.95)"
+    >
+
+
+  	<!-- The top row containing the title and close button -->
+	<Text text="Setup Options" Color="White" fontSize="18" fontStyle="Bold" rectAlignment="UpperCenter" alignment="LowerCenter" width="230" height="80" offsetXY="0 55"></Text>
+	<Button id="closeButton" class="topButtons" rectAlignment="UpperRight" color="#990000" textColor="#FFFFFF" text="X" onClick="closeSetupPanel"></Button>
+
+
+    <Panel offsetXY="0 -35" color="rgb(0.5, 0.5, 0.5)" width="396" height="594" outline="Grey" outlineSize="2 -2">
+		<!-- Background image-->
+		<Image image="SetupOptions" preserveAspect="true" rectAlignment="UpperLeft"> </Image>
+
+		<!-- All content displayed over the background image-->
+		<VerticalLayout offsetXY="0 -130" padding="10 10 10 170">
+
+			<Text alignment="UpperCenter"> If closed, this menu can be reopened via the "Setup Options" button on the top left of the screen.</Text>
+
+  			<!-- Expansions -->
+			<VerticalLayout padding="10 10 10 0" preferredHeight="50"
+    			childForceExpandHeight="false" spacing="5">
+
+    			<Text class="Heading"> Expansions </Text>
+
+				<HorizontalLayout flexibleHeight="0">
+					<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+        				id="FirstEdition" isOn="true" onValueChanged="SetupUI_OnChange"
+        				tooltip="Factions from expansions, including compatible ones from the 1st edition">
+        			Expansion Species </Toggle>
+			
+
+    				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+        				id="MinorSpecies" isOn="true" onValueChanged="SetupUI_OnChange"
+        				tooltip="Enable ambassadors from minor factions">
+        			Minor Species </Toggle>
+
+				</HorizontalLayout>
+
+
+				<HorizontalLayout flexibleHeight="0">
+    				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+        				id="RiftWeapons" isOn="true" onValueChanged="SetupUI_OnChange"
+						tooltip="Add Rift Ship Parts, powerful weapons that can also backfire">
+        			Rift Cannon </Toggle>
+
+					<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+        				id="GalacticEvents" isOn="false" onValueChanged="SetupUI_OnChange"
+        				tooltip="Add Pulsar, Super Nova, Black Hole and Nebula sectors">
+        			Galactic Events </Toggle>
+				</HorizontalLayout>
+			</VerticalLayout>
+
+
+			<!-- Options -->
+			<VerticalLayout padding="10 10 10 0" preferredHeight="50"
+    			childForceExpandHeight="false" spacing="5">
+
+       		<Text class="Heading"> Options </Text>
+
+			<HorizontalLayout flexibleHeight="0">
+          		<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+            		id="AdvancedGCDS" onValueChanged="SetupUI_OnChange"
+              		tooltip="Randomly chose a blueprint for the Galactic Center, including advanced versions">
+              	Randomize GCDS </Toggle>
+
+            	<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+            		id="AdvancedAncients" onValueChanged="SetupUI_OnChange"
+              		tooltip="Randomly chose a blueprint for the Ancients, including advanced versions">
+              	Randomize Ancients </Toggle>
+			</HorizontalLayout>
+
+			<HorizontalLayout flexibleHeight="0">
+            <Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+            	id="AdvancedGuardians" onValueChanged="SetupUI_OnChange"
+              	tooltip="Randomly chose a blueprint for the Guardian ships, including advanced versions">
+              Randomize Guardians </Toggle>
+			</HorizontalLayout>
+       </VerticalLayout>
+
+
+		<!-- House Rules -->
+		<VerticalLayout padding="10 10 10 0" preferredHeight="50"
+				 childForceExpandHeight="false"
+				 spacing="5">
+
+				<Text class="Heading"> House Rules </Text>
+
+				<Toggle
+					id="NoRoundLimit" onValueChanged="SetupUI_OnChange"
+					tooltip="Enable custom game modes that take more than 8 rounds">
+				No Round Limit </Toggle>
+		</VerticalLayout>
+
+
+		<!-- Player Count -->
+		<VerticalLayout padding="10 10 0 0"
+			childForceExpandHeight="true" spacing="0">
+
+			<Text class="Heading"> Player Count </Text>
+			<ToggleGroup>
+    			<HorizontalLayout spacing="12">
+        			<ToggleButton id="2Players" onValueChanged="SetupUI_OnChange">2</ToggleButton>
+        			<ToggleButton id="3Players" onValueChanged="SetupUI_OnChange">3</ToggleButton>
+					<ToggleButton id="4Players" onValueChanged="SetupUI_OnChange" isOn="true">4</ToggleButton>
+					<ToggleButton id="5Players" onValueChanged="SetupUI_OnChange">5</ToggleButton>
+					<ToggleButton id="6Players" onValueChanged="SetupUI_OnChange">6</ToggleButton>
+    			</HorizontalLayout>
+			</ToggleGroup>
+		</VerticalLayout>
+
+		<!-- Setup Button -->
+		<HorizontalLayout padding="10 10 20 0">
+			<Button id="setupButton" class="topButtons" rectAlignment="LowerCenter" text="Setup" onClick="gameSetup"></Button>
+		</HorizontalLayout>
+
+		</VerticalLayout>
+	</Panel>
+
+</Panel>
