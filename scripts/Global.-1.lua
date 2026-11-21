@@ -106,7 +106,9 @@ settings = {
   AdvancedAncients = false,
   AdvancedGuardians = false,
 
-  NoRoundLimit = false
+  NoRoundLimit = false,
+
+  AdvancedTurnOrder = false
 }
 
 -- print the settings as currently configured
@@ -117,6 +119,7 @@ function printSettings()
   printToAll(string.format(" - Mionor Species: %s", tostring(settings.MinorSpecies)))
   printToAll(string.format(" - Galactic Events: %s", tostring(settings.GalacticEvents)))
   printToAll(string.format(" - Round Limit: %s", tostring(not settings.NoRoundLimit)))
+  printToAll(string.format(" - Advanced Turn Order: %s", tostring(settings.AdvancedTurnOrder == true)))
 end
 
 
@@ -235,13 +238,19 @@ function updateSetupUI()
   if (settings.NoRoundLimit) then UI.setAttribute("NoRoundLimit", "isOn", true)
   else UI.setAttribute("NoRoundLimit", "isOn", false) end
 
+  if (settings.AdvancedTurnOrder) then UI.setAttribute("AdvancedTurnOrder", "isOn", true)
+  else UI.setAttribute("AdvancedTurnOrder", "isOn", false) end
+
   for i = 2, 6 do UI.setAttribute(i .. 'Players', 'isOn', settings.PlayerCount == i) end
 end
 
 
 -- Called when the game is saved, save global settings
 function onSave()
-  return JSON.encode(settings)
+  settings.ATOState = ATO
+  local data = JSON.encode(settings)
+  settings.ATOState = nil
+  return data
 end
 
 
@@ -264,6 +273,8 @@ function onLoad(saveData)
       -- Load the save data, if present
       if saveData and saveData ~= "" then
         settings = JSON.decode(saveData)
+        ATO_restore(settings.ATOState)
+        settings.ATOState = nil
         printToAll("Save state initialized")
         printToAll(string.format("Round: %s", round))
         printSettings()
@@ -291,6 +302,7 @@ function onLoad(saveData)
       end
     end
 
+    ATO_updateUI()
 end
 
 
@@ -332,7 +344,12 @@ function gameSetup()
   local players = settings.PlayerCount
 
   broadcastToAll(string.format("--  Round #1 (Setup for %d players)  --", players))
-  chooseFirstPlayer()
+  if (settings.AdvancedTurnOrder) then
+    -- first player is decided by the turn order draft
+    if not ATO_startDraft() then chooseFirstPlayer() end
+  else
+    chooseFirstPlayer()
+  end
 
   -- update round marker
   RoundMarker.setPositionSmooth({42.87, 1.32, 19.24}, false, false)
@@ -409,12 +426,19 @@ end
 
 
 function chooseFirstPlayer()
-  local FirstPlayer_Tile = getObjectFromGUID(FirstPlayer_GUID)
-  local Traitor_Tile = getObjectFromGUID(Traitor_GUID)
   local player_color = getSeatedPlayers()[math.random(1, #getSeatedPlayers())]
   Turns.turn_color = player_color
 
-  broadcastToAll("First Player, chosen randomly: " .. Player[player_color].steam_name, player_color) 
+  broadcastToAll("First Player, chosen randomly: " .. Player[player_color].steam_name, player_color)
+  placeFirstPlayerTile(player_color)
+end
+
+
+-- move the first player tile in front of the given player
+function placeFirstPlayerTile(player_color)
+  local FirstPlayer_Tile = getObjectFromGUID(FirstPlayer_GUID)
+  local Traitor_Tile = getObjectFromGUID(Traitor_GUID)
+  if (FirstPlayer_Tile == nil or player_color == nil) then return end
 
   -- place first player tile if the selected player has a location at the table
   if (Player[player_color].getHandTransform(int)~=nil) then
@@ -428,9 +452,9 @@ function chooseFirstPlayer()
     FirstPlayer_Tile.setPositionSmooth(destination, false, false)
     FirstPlayer_Tile.setRotationSmooth(Rotation, false, true)
   else -- fallback: move first player & traitor tile 
-    if (settings.PlayerCount>3) then 
+    if (settings.PlayerCount>3) then
       FirstPlayer_Tile.setPositionSmooth({41.28, 1.06, -23.10}, false, false)
-      Traitor_Tile.setPositionSmooth({35.7, 0.96, -23.10}, false, false)
+      if (Traitor_Tile ~= nil) then Traitor_Tile.setPositionSmooth({35.7, 0.96, -23.10}, false, false) end
     end
   end
 
@@ -550,6 +574,9 @@ function nextRound(parameters)
   end
   broadcastToAll(string.format("-- Round #%d --", round))
 
+  -- with the advanced turn order, the pass order decides the next round's turn order
+  if (settings.AdvancedTurnOrder and ATO_newRound(round)) then return end
+
   Turns.reverse_order = false
   if TurnDirection == nil then return 
   end
@@ -656,6 +683,9 @@ function PlayerSetup(parameters)
     return false
   end
 
+  -- advanced turn order: factions are picked in the drafted race pick order
+  if not ATO_canPickRace(PlayerColor) then return false end
+
   PlayerSelection[PlayerColor] = Faction.Name
   print(Player[PlayerColor].steam_name, ' selected ', Faction.Name)
 
@@ -683,6 +713,7 @@ function PlayerSetup(parameters)
   -- take action card and position it
   Object = SeekAndTake('Actions', Box, takeParams)
   if (Object~=false) then
+    ATO.actionCards[Object.getGUID()] = PlayerColor
     destination = PlayerPosition + Vector(-16.5*InvPos, 0, 19*InvPos)
     Object.setPositionSmooth(destination, false, true)
   end
@@ -757,6 +788,7 @@ function PlayerSetup(parameters)
     end
   end
 
+  ATO_racePicked(PlayerColor)
   return true
 end
 
@@ -1465,3 +1497,405 @@ function getInvertFactor(object)
     if object.getPosition().z > 0 then return -1
     else return 1 end
 end
+
+
+-- ADVANCED TURN ORDER --
+-- Optional house rule, enabled with the "Advanced Turn Order" checkbox in the setup panel.
+--  1. After "Setup", the seated players are put in a random draft order.
+--  2. In draft order, each player takes either the best free race pick position or the
+--     best free turn order position (for round 1), and is instantly put in the last free
+--     position of the other track.
+--  3. Factions must then be selected in race pick order.
+--  4. Round 1 is played in the drafted turn order. A player passes by flipping their
+--     "Actions" card face down during their own turn: their turn ends immediately and they
+--     take the best free turn order position for the next round.
+-- The draft panel is shown during the draft and faction selection. During play, the
+-- built-in turn indicator (top right) shows the current order, with the next round's
+-- order listed below it.
+
+-- true: players that passed still get turns (to take reactions), as in the base rules
+-- false: players that passed are skipped until the next round
+local ATO_KEEP_TURNS_AFTER_PASS = true
+
+function ATO_defaultState()
+  return {
+    phase = "off",      -- "off", "draft", "race", "play"
+    draftOrder = {},    -- colors, random order in which positions are drafted
+    draftIndex = 1,
+    choice = {},        -- color -> "race" or "turn"
+    raceSlots = {},     -- race pick position -> color (false = still free)
+    turnSlots = {},     -- round 1 turn order position -> color (false = still free)
+    raceIndex = 1,
+    round = 0,
+    order = {},         -- turn order of the current round
+    passOrder = {},     -- colors in the order they passed this round
+    actionCards = {}    -- Actions card GUID -> owner color
+  }
+end
+
+-- restore the state from a save, filling in anything missing
+function ATO_restore(state)
+  ATO = ATO_defaultState()
+  if type(state) ~= "table" then return end
+  for key, value in pairs(state) do ATO[key] = value end
+end
+
+function ATO_name(color)
+  if color == nil then return "-" end
+  local p = Player[color]
+  if p ~= nil and p.seated and p.steam_name ~= nil then return p.steam_name end
+  return color
+end
+
+function ATO_shuffle(list)
+  for i = #list, 2, -1 do
+    local j = math.random(i)
+    list[i], list[j] = list[j], list[i]
+  end
+  return list
+end
+
+function ATO_copy(list)
+  local result = {}
+  for i, value in ipairs(list) do result[i] = value end
+  return result
+end
+
+function ATO_isPassed(color)
+  return table.contains(ATO.passOrder, color)
+end
+
+-- players taking part: everyone seated at a player color
+function ATO_seatedPlayers()
+  local colors = {}
+  for _, color in ipairs(getSeatedPlayers()) do
+    if color ~= "Black" and color ~= "Grey" then table.insert(colors, color) end
+  end
+  return colors
+end
+
+-- hand the turn to a color using the built-in turn system
+function ATO_setTurns(order, current)
+  Turns.enable = true
+  Turns.type = 2  -- custom order
+  Turns.order = order
+  Turns.reverse_order = false
+  Turns.pass_turns = true
+  if current ~= nil then Turns.turn_color = current end
+end
+
+
+-- Step 1: random draft order (called when "Setup" is pressed)
+function ATO_startDraft()
+  local players = ATO_seatedPlayers()
+  if #players == 0 then
+    broadcastToAll("Advanced Turn Order: no seated players found, using a random first player instead.", {1, 0.4, 0.4})
+    ATO = ATO_defaultState()
+    ATO_updateUI()
+    return false
+  end
+  if #players ~= settings.PlayerCount then
+    broadcastToAll(string.format("Advanced Turn Order: %d players are seated, but the player count is set to %d. The draft uses the seated players.",
+      #players, settings.PlayerCount), {1, 0.8, 0.4})
+  end
+
+  local actionCards = ATO.actionCards  -- keep cards registered before setup
+  ATO = ATO_defaultState()
+  ATO.actionCards = actionCards
+  ATO.phase = "draft"
+  ATO.draftOrder = ATO_shuffle(players)
+  for i = 1, #players do
+    ATO.raceSlots[i] = false
+    ATO.turnSlots[i] = false
+  end
+
+  broadcastToAll("Advanced Turn Order - draft order (random): " .. ATO_numberedList(ATO.draftOrder))
+
+  ATO_setTurns(ATO_copy(ATO.draftOrder), ATO.draftOrder[1])
+  ATO_announceDrafter()
+  ATO_updateUI()
+  return true
+end
+
+-- best (first) and last free position of a track
+function ATO_firstFree(slots)
+  for i = 1, #slots do
+    if not slots[i] then return i end
+  end
+  return nil
+end
+
+function ATO_lastFree(slots)
+  for i = #slots, 1, -1 do
+    if not slots[i] then return i end
+  end
+  return nil
+end
+
+-- "1. Name, 2. Name, ..."
+function ATO_numberedList(slots)
+  local names = {}
+  for i, color in ipairs(slots) do
+    names[i] = i .. ". " .. (color and ATO_name(color) or "-")
+  end
+  return table.concat(names, ", ")
+end
+
+function ATO_announceDrafter()
+  local color = ATO.draftOrder[ATO.draftIndex]
+  broadcastToAll(string.format("%s: take the best race pick (#%d) or the best turn order position (#%d)?",
+    ATO_name(color), ATO_firstFree(ATO.raceSlots), ATO_firstFree(ATO.turnSlots)), color)
+end
+
+-- Step 2: draft buttons in the turn order panel
+function ATO_ChooseRace(player) ATO_choose(player, "race") end
+function ATO_ChooseTurn(player) ATO_choose(player, "turn") end
+
+function ATO_choose(player, kind)
+  if ATO.phase ~= "draft" then return end
+  local color = ATO.draftOrder[ATO.draftIndex]
+  if player.color ~= color then
+    player.broadcast("It is " .. ATO_name(color) .. "'s turn to choose.", {1, 0.4, 0.4})
+    return
+  end
+
+  -- best free position of the chosen track, last free position of the other one
+  ATO.choice[color] = kind
+  local raceIndex, turnIndex
+  if kind == "race" then
+    raceIndex = ATO_firstFree(ATO.raceSlots)
+    turnIndex = ATO_lastFree(ATO.turnSlots)
+  else
+    turnIndex = ATO_firstFree(ATO.turnSlots)
+    raceIndex = ATO_lastFree(ATO.raceSlots)
+  end
+  ATO.raceSlots[raceIndex] = color
+  ATO.turnSlots[turnIndex] = color
+  broadcastToAll(string.format("%s takes %s: race pick #%d, turn order #%d", ATO_name(color),
+    kind == "race" and "the best race pick" or "the best turn order position", raceIndex, turnIndex), color)
+
+  ATO.draftIndex = ATO.draftIndex + 1
+  if ATO.draftIndex > #ATO.draftOrder then
+    ATO_finishDraft()
+  else
+    Turns.turn_color = ATO.draftOrder[ATO.draftIndex]
+    ATO_announceDrafter()
+    ATO_updateUI()
+  end
+end
+
+-- all positions are taken: continue with faction selection
+function ATO_finishDraft()
+  broadcastToAll("Race pick order: " .. ATO_numberedList(ATO.raceSlots))
+  broadcastToAll("Round 1 turn order: " .. ATO_numberedList(ATO.turnSlots))
+
+  ATO.phase = "race"
+  ATO.raceIndex = 0
+  ATO_setTurns(ATO_copy(ATO.raceSlots), nil)
+  ATO_advanceRacePick()
+end
+
+-- Step 3: factions are selected in race pick order
+function ATO_advanceRacePick()
+  ATO.raceIndex = ATO.raceIndex + 1
+  -- skip players that already selected a faction
+  while ATO.raceSlots[ATO.raceIndex] ~= nil and PlayerSelection[ATO.raceSlots[ATO.raceIndex]] ~= nil
+        and PlayerSelection[ATO.raceSlots[ATO.raceIndex]] ~= 'none' do
+    ATO.raceIndex = ATO.raceIndex + 1
+  end
+
+  local color = ATO.raceSlots[ATO.raceIndex]
+  if color == nil then
+    ATO_startPlay()
+    return
+  end
+  Turns.turn_color = color
+  broadcastToAll(ATO_name(color) .. ": select your faction.", color)
+  ATO_updateUI()
+end
+
+-- called by PlayerSetup before a faction is given to a player
+function ATO_canPickRace(color)
+  if not settings.AdvancedTurnOrder then return true end
+  if ATO.phase == "draft" then
+    broadcastToColor("Finish the turn order draft before selecting factions.", color, {1, 0.4, 0.4})
+    return false
+  end
+  if ATO.phase == "race" and ATO.raceSlots[ATO.raceIndex] ~= color then
+    broadcastToColor("It is " .. ATO_name(ATO.raceSlots[ATO.raceIndex]) .. "'s turn to select a faction.", color, {1, 0.4, 0.4})
+    return false
+  end
+  return true
+end
+
+-- called by PlayerSetup after a faction was given to a player
+function ATO_racePicked(color)
+  if settings.AdvancedTurnOrder and ATO.phase == "race" and ATO.raceSlots[ATO.raceIndex] == color then
+    ATO_advanceRacePick()
+  else
+    ATO_updateUI()
+  end
+end
+
+-- Step 4: play round 1 in the drafted turn order
+function ATO_startPlay()
+  ATO.phase = "play"
+  ATO.round = tonumber(RoundMarker.getDescription()) or 1
+  ATO.order = ATO_copy(ATO.turnSlots)
+  ATO.passOrder = {}
+  ATO_beginRound()
+end
+
+function ATO_beginRound()
+  broadcastToAll(string.format("Round %d turn order: %s", ATO.round, ATO_numberedList(ATO.order)))
+  broadcastToAll("Flip your Actions card face down during your turn to pass.")
+
+  ATO_setTurns(ATO_copy(ATO.order), ATO.order[1])
+  placeFirstPlayerTile(ATO.order[1])
+  ATO_updateUI()
+end
+
+-- called by nextRound; returns true if the advanced turn order handled the turn order
+function ATO_newRound(round)
+  if ATO.phase ~= "play" then return false end
+
+  -- pass order first, then anyone that did not pass (in their current order)
+  local order = ATO_copy(ATO.passOrder)
+  for _, color in ipairs(ATO.order) do
+    if not table.contains(order, color) then table.insert(order, color) end
+  end
+
+  ATO.round = round
+  ATO.order = order
+  ATO.passOrder = {}
+  ATO_beginRound()
+  return true
+end
+
+function ATO_nextColor(fromColor)
+  local count = #ATO.order
+  local index = 0
+  for i, color in ipairs(ATO.order) do
+    if color == fromColor then index = i end
+  end
+  for step = 1, count do
+    local color = ATO.order[((index - 1 + step) % count) + 1]
+    if ATO_KEEP_TURNS_AFTER_PASS or not ATO_isPassed(color) then return color end
+  end
+  return nil
+end
+
+-- a player flips their Actions card face down
+function ATO_pass(color, card, flipper)
+  if ATO_isPassed(color) or not table.contains(ATO.order, color) then return end
+
+  if Turns.turn_color ~= color then
+    broadcastToColor("You can only pass during your own turn. It is " .. ATO_name(Turns.turn_color) .. "'s turn.",
+      flipper or color, {1, 0.4, 0.4})
+    -- undo the flip once the card has settled
+    Wait.time(function()
+      if card ~= nil and card.is_face_down and not ATO_isPassed(color) then card.flip() end
+    end, 1)
+    return
+  end
+
+  table.insert(ATO.passOrder, color)
+  broadcastToAll(string.format("%s passes and takes turn order position #%d for the next round.",
+    ATO_name(color), #ATO.passOrder), color)
+
+  if #ATO.passOrder >= #ATO.order then
+    broadcastToAll("All players have passed. Finish the round and press 'Next Round'.")
+  end
+
+  -- end the turn immediately
+  local nextColor = ATO_nextColor(color)
+  if nextColor ~= nil and nextColor ~= color then Turns.turn_color = nextColor end
+  ATO_updateUI()
+end
+
+function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
+  if not (settings.AdvancedTurnOrder and ATO.phase == "play") then return end
+  if object == nil or object.getName() ~= "Actions" then return end
+  if type(flip) ~= "number" or flip == old_flip then return end
+
+  local angle = flip % 360
+  if angle < 90 or angle > 270 then return end  -- flipped face up, not a pass
+
+  local owner = ATO.actionCards[object.getGUID()] or player_color
+  ATO_pass(owner, object, player_color)
+end
+
+function onPlayerTurn(player, previous_player)
+  if not (settings.AdvancedTurnOrder and ATO.phase == "play") then return end
+  ATO_updateUI()
+  if ATO_KEEP_TURNS_AFTER_PASS or player == nil then return end
+
+  -- skip players that already passed
+  if ATO_isPassed(player.color) then
+    local nextColor = ATO_nextColor(player.color)
+    if nextColor ~= nil and nextColor ~= player.color then Turns.turn_color = nextColor end
+  end
+end
+
+
+-- turn order panels
+function ATO_slotLines(slots, count, marker)
+  local lines = {}
+  for i = 1, count do
+    local color = slots[i]
+    local line = string.format("%d. %s", i, color and ATO_name(color) or "-")
+    if marker ~= nil and color then line = line .. marker(color) end
+    table.insert(lines, line)
+  end
+  return table.concat(lines, "\n")
+end
+
+function ATO_updateUI()
+  local enabled = settings.AdvancedTurnOrder and ATO.phase ~= "off"
+  local count = math.max(#ATO.draftOrder, #ATO.order)
+
+  -- draft / faction selection panel
+  if enabled and (ATO.phase == "draft" or ATO.phase == "race") then
+    local text = ""
+    UI.setAttribute("ATO_Panel", "active", "true")
+
+    if ATO.phase == "draft" then
+      local color = ATO.draftOrder[ATO.draftIndex]
+      text = "<b>Draft</b> - choosing: " .. ATO_name(color) .. "\n\n" ..
+        "<b>Draft order</b>\n" .. ATO_slotLines(ATO.draftOrder, count) .. "\n\n" ..
+        "<b>Race pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count) .. "\n\n" ..
+        "<b>Round 1 turn order</b>\n" .. ATO_slotLines(ATO.turnSlots, count)
+
+      UI.setAttribute("ATO_RaceButton", "text", string.format("Best race pick (#%d)", ATO_firstFree(ATO.raceSlots) or 0))
+      UI.setAttribute("ATO_TurnButton", "text", string.format("Best turn order (#%d)", ATO_firstFree(ATO.turnSlots) or 0))
+      UI.setAttribute("ATO_Buttons", "visibility", color or "")
+      UI.setAttribute("ATO_Buttons", "active", "true")
+    else
+      local current = ATO.raceSlots[ATO.raceIndex]
+      text = "<b>Faction selection</b> - picking: " .. ATO_name(current) .. "\n\n" ..
+        "<b>Race pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count, function(color)
+          local faction = PlayerSelection[color]
+          if faction ~= nil and faction ~= 'none' then return " (" .. faction .. ")" end
+          if color == current then return "  (picking)" end
+          return ""
+        end) .. "\n\n" ..
+        "<b>Round 1 turn order</b>\n" .. ATO_slotLines(ATO.turnSlots, count)
+      UI.setAttribute("ATO_Buttons", "active", "false")
+    end
+
+    UI.setValue("ATO_Text", text)
+  else
+    UI.setAttribute("ATO_Panel", "active", "false")
+  end
+
+  -- during play: the built-in turn indicator shows the current order,
+  -- this small list below it shows the order for the next round
+  if enabled and ATO.phase == "play" then
+    UI.setAttribute("ATO_NextPanel", "active", "true")
+    UI.setValue("ATO_NextText", "<b>Next round</b>\n" .. ATO_slotLines(ATO.passOrder, #ATO.order))
+  else
+    UI.setAttribute("ATO_NextPanel", "active", "false")
+  end
+end
+
+ATO = ATO_defaultState()
