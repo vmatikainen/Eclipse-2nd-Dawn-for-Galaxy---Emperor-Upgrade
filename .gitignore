@@ -7,3 +7,4 @@
 !scripts/*.xml
 !tools/
 !tools/*.py
+!README.md
