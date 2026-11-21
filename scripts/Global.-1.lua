@@ -420,8 +420,15 @@ function gameSetup()
   -- remove traitor card for 2 or 3 players
   if (players<4) then getObjectFromGUID(Traitor_GUID).destruct() end
 
+  -- with the advanced turn order, the starting techs are drawn after faction selection
+  if not (settings.AdvancedTurnOrder and ATO.phase ~= "off") then drawStartingTechs() end
+end
+
+
+-- draw the technology tiles available in round 1
+function drawStartingTechs()
   rareTechIndex = 0
-  newTechs = (players * 2) + 8
+  newTechs = (settings.PlayerCount * 2) + 8
   Wait.time(drawTech, 0.4, newTechs)  -- repeat drawTech [newTech] times
 end
 
@@ -1856,6 +1863,8 @@ end
 -- Step 4: play round 1 in the drafted turn order
 function ATO_startPlay()
   ATO.phase = "play"
+  broadcastToAll("All factions selected: drawing the starting technologies.")
+  drawStartingTechs()
   ATO.round = tonumber(RoundMarker.getDescription()) or 1
   ATO.order = ATO_copy(ATO.turnSlots)
   ATO.passOrder = {}
