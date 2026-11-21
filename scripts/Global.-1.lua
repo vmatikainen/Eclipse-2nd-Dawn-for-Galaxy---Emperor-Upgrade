@@ -631,8 +631,8 @@ function setInteractivity(isInteractable)
 end
 
 
--- after all factions are selected: remove the selection buttons and move the selection
--- mat and faction display tiles under the table
+-- after all factions are selected: remove the selection buttons, the selection mat and
+-- the faction display tiles (they are not used after faction selection)
 local RaceSelection_GUIDs = {
   'ac4050', -- faction selection mat
   -- faction display tiles (by column: Eridani, Terran Red, Planta, ...)
@@ -643,18 +643,12 @@ local RaceSelection_GUIDs = {
   'f3dc1f'  -- Pyxis Unity
 }
 
+-- (moving them under the table is not enough: that part of the table does not cover them)
 function hideRaceSelection()
-  for _, GUID in ipairs(ButtonGUIDs) do
-    local button = getObjectFromGUID(GUID)
-    if button ~= nil then button.destruct() end
-  end
-  for _, GUID in ipairs(RaceSelection_GUIDs) do
-    local object = getObjectFromGUID(GUID)
-    if object ~= nil then
-      local position = object.getPosition()
-      object.setLock(true)
-      object.setPosition({position.x, -5, position.z})
-      object.interactable = false
+  for _, list in ipairs({ButtonGUIDs, RaceSelection_GUIDs}) do
+    for _, GUID in ipairs(list) do
+      local object = getObjectFromGUID(GUID)
+      if object ~= nil then object.destruct() end
     end
   end
 end
