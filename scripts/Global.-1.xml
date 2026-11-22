@@ -74,6 +74,64 @@
 
 
 
+<!-- Combat simulator, opened with the "Combat Sim" button on a player board (scripts/include/CombatSim.ttslua) -->
+<Panel id="CombatSim_Panel"
+	width="400"
+	height="440"
+	active="false"
+	rectAlignment="MiddleCenter"
+	offsetXY="0 0"
+	allowDragging="true"
+	returnToOriginalPositionWhenReleased="false"
+	color="rgba(0.15, 0.15, 0.15, 0.95)"
+	outline="Grey"
+	outlineSize="2 -2">
+
+	<Text text="Combat Sim" fontSize="16" fontStyle="Bold" rectAlignment="UpperCenter" alignment="MiddleCenter" width="300" height="30" offsetXY="0 -5"></Text>
+	<Button class="topButtons" rectAlignment="UpperRight" color="#990000" textColor="#FFFFFF" text="X" onClick="CombatSim_close"></Button>
+	<Text id="CombatSim_Owner" fontSize="13" rectAlignment="UpperLeft" alignment="MiddleLeft" width="250" height="20" offsetXY="10 -35"></Text>
+	<HorizontalLayout rectAlignment="UpperRight" width="130" height="22" offsetXY="-10 -34" spacing="4">
+		<Text fontSize="12" alignment="MiddleRight">Battles</Text>
+		<Button id="CombatSim_Runs1000" fontSize="12" onClick="CombatSim_setRuns(1000)">1k</Button>
+		<Button id="CombatSim_Runs5000" fontSize="12" onClick="CombatSim_setRuns(5000)">5k</Button>
+	</HorizontalLayout>
+
+	<VerticalLayout rectAlignment="UpperLeft" width="380" height="150" offsetXY="10 -60" spacing="4" childForceExpandHeight="false">
+		<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
+			<Text preferredWidth="110" flexibleWidth="0" fontSize="14">Interceptors</Text>
+			<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(interceptor)">-</Button>
+			<Text id="CombatSim_interceptor_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+			<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(interceptor)">+</Button>
+		</HorizontalLayout>
+		<Text id="CombatSim_interceptor_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
+		<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
+			<Text preferredWidth="110" flexibleWidth="0" fontSize="14">Cruisers</Text>
+			<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(cruiser)">-</Button>
+			<Text id="CombatSim_cruiser_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+			<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(cruiser)">+</Button>
+		</HorizontalLayout>
+		<Text id="CombatSim_cruiser_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
+		<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
+			<Text preferredWidth="110" flexibleWidth="0" fontSize="14">Dreadnoughts</Text>
+			<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(dreadnought)">-</Button>
+			<Text id="CombatSim_dreadnought_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+			<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(dreadnought)">+</Button>
+		</HorizontalLayout>
+		<Text id="CombatSim_dreadnought_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
+	</VerticalLayout>
+
+	<HorizontalLayout rectAlignment="UpperLeft" width="380" height="32" offsetXY="10 -218" spacing="6">
+		<Button fontSize="13" onClick="CombatSim_simulate(ancient)">Ancient</Button>
+		<Button fontSize="13" onClick="CombatSim_simulate(ancient2)">2 Ancients</Button>
+		<Button fontSize="13" onClick="CombatSim_simulate(gcds)">GCDS</Button>
+		<Button id="CombatSim_Guardian" fontSize="13" onClick="CombatSim_simulate(guardian)">Guardian</Button>
+	</HorizontalLayout>
+
+	<Text id="CombatSim_Result" fontSize="13" rectAlignment="UpperLeft" alignment="UpperLeft" width="380" height="175" offsetXY="10 -260"></Text>
+</Panel>
+
+
+
 <Panel id="SetupPanel"
 	width="400"
     height="740"

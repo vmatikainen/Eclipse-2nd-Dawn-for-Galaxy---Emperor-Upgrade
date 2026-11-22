@@ -195,6 +195,26 @@ Tick **Random races** under *Options* in the setup popup. Nobody picks a race: a
   *Draft* as the starting player works as *Random*.
 - **Randomize seat order** works with it as with picked races.
 
+## Combat simulator
+
+Every player board has a **Combat Sim** button, between the Actions card and the
+Interceptor blueprint. It opens a panel where you set how many interceptors, cruisers and
+dreadnoughts attack, then pick the opponent: **Ancient**, **2 Ancients**, **GCDS**, or
+**Guardian** (shown when a Guardian is on the table). It plays 1000 or 5000 random
+battles (*Battles: 1k / 5k* at the top of the panel, 5k by default) and shows the odds of
+winning and, when winning, how many of each ship survive on average.
+
+- Your ships are your blueprints as they are now, including upgrades. The NPCs are the
+  variants this game uses (randomized Ancients, Guardians and GCDS included).
+- Missiles fire first, then cannons in initiative order; on a tie the NPC fires first.
+- Ships without cannons (missile boats) escape after firing their missiles. They count as
+  survivors when the battle is won.
+- NPCs hit the biggest ship they can destroy, else the biggest ship.
+- Rift cannons roll the rift die: miss, 1 damage, 2 damage, 3 damage + 1 self damage,
+  1 self damage, miss. Their hits ignore computers and shields. Self damage goes to your
+  own ships with rift weapons: it destroys the largest ship it can, else hits the largest.
+- Not simulated: retreating (other than missile boats) and Starbases.
+
 ## Player colors and hot seat
 
 The table has seats for six player colors: **White, Red, Yellow, Blue, Green and Purple**.
