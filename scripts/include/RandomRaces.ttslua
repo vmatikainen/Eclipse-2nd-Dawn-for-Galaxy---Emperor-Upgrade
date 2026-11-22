@@ -1,0 +1,118 @@
+--------------------------------------------------------------------------------
+-- Random races (setup option)
+--------------------------------------------------------------------------------
+-- Enabled with the "Random races" checkbox. Every seated player is given a random race
+-- instead of picking one:
+--  - The six Terran races count as one race in the draw. A player who draws it gets
+--    the Terran race of their own color (Purple gets the black one, Terran Alliance).
+--  - Pyxis Unity is never drawn. Expansion races are only drawn with "Expansion Species".
+--  - With the Advanced Turn Order there is no draft: the random order revealed after
+--    Setup is the round 1 turn order, and races are given out in that order.
+--  - Without it, races are given out right after Setup.
+-- A race is given out through PlayerSetup, as if the player had clicked its button, so
+-- "Randomize seat order" works the same as with picked races.
+
+-- race buttons: the button's GUID and the name of the faction table in its script
+local RandomRaces_BUTTONS = {
+  {guid = '68eb20', var = 'Eridani'},
+  {guid = '859e09', var = 'Descendants'},
+  {guid = '258abe', var = 'Hydran'},
+  {guid = '6a3403', var = 'Mechanema'},
+  {guid = '738b70', var = 'Orion'},
+  {guid = 'd35d30', var = 'Planta'},
+  {guid = 'c9e20e', var = 'Exiles', expansion = true},
+  {guid = '87e4f1', var = 'MagellanWarden', expansion = true},
+  {guid = 'c37168', var = 'Lyra', expansion = true},
+  {guid = '4663e1', var = 'RhoIndi', expansion = true},
+}
+-- the Terran race of each player color
+local RandomRaces_TERRANS = {
+  White  = {guid = '833689', var = 'TerranConglomerate'},
+  Red    = {guid = '610c26', var = 'TerranDirectorate'},
+  Yellow = {guid = 'ca1635', var = 'TerranRepublic'},
+  Blue   = {guid = 'acbc94', var = 'TerranFederation'},
+  Green  = {guid = '111af9', var = 'TerranUnion'},
+  Purple = {guid = '10e852', var = 'TerranAlliance'},  -- "Terran Black"
+}
+local RandomRaces_TERRAN_COLORS = {"White", "Red", "Yellow", "Blue", "Green", "Purple"}
+local RandomRaces_INTERVAL = 4  -- seconds between races given out (PlayerSetup shares global state)
+local RandomRaces_giving = false  -- true while PlayerSetup runs for a random race
+
+-- called by PlayerSetup: with random races, nobody picks a race by hand
+function RandomRaces_canPickRace(color)
+  if not settings.RandomRaces or RandomRaces_giving then return true end
+  broadcastToColor("Races are given out randomly in this game.", color, {1, 0.4, 0.4})
+  return false
+end
+
+function RandomRaces_terranTaken()
+  for _, faction in pairs(PlayerSelection) do
+    if type(faction) == "string" and string.sub(faction, 1, 6) == "Terran" then return true end
+  end
+  return false
+end
+
+-- races that can still be drawn ("terran" stands for all Terran races)
+function RandomRaces_pool()
+  local pool = {}
+  for _, race in ipairs(RandomRaces_BUTTONS) do
+    if (settings.FirstEdition or not race.expansion) and getObjectFromGUID(race.guid) ~= nil then
+      table.insert(pool, race)
+    end
+  end
+  if not RandomRaces_terranTaken() then table.insert(pool, "terran") end
+  return pool
+end
+
+-- the Terran race for a color: its own, or any left if that one is gone
+function RandomRaces_terranFor(color)
+  local own = RandomRaces_TERRANS[color]
+  if own ~= nil and getObjectFromGUID(own.guid) ~= nil then return own end
+  for _, c in ipairs(RandomRaces_TERRAN_COLORS) do
+    local terran = RandomRaces_TERRANS[c]
+    if getObjectFromGUID(terran.guid) ~= nil then return terran end
+  end
+  return nil
+end
+
+-- give one random race to a color; returns true if it was given
+function RandomRaces_give(color)
+  if PlayerSelection[color] ~= nil and PlayerSelection[color] ~= 'none' then return false end
+  local pool = RandomRaces_pool()
+  while #pool > 0 do
+    local index = math.random(#pool)
+    local race = table.remove(pool, index)
+    if race == "terran" then race = RandomRaces_terranFor(color) end
+    local button = race and getObjectFromGUID(race.guid)
+    local faction = button and button.getTable(race.var)
+    if faction ~= nil then
+      broadcastToAll(ATO_name(color) .. " gets a random race: " .. faction.Name, color)
+      RandomRaces_giving = true
+      local ok, given = pcall(PlayerSetup, {PlayerColor = color, Faction = faction})
+      RandomRaces_giving = false
+      if not ok then
+        broadcastToAll("Random races: setting up " .. faction.Name .. " failed: " .. tostring(given), {1, 0.4, 0.4})
+        return false
+      end
+      if given then button.destruct() end
+      return given
+    end
+  end
+  broadcastToAll("Random races: no race left for " .. ATO_name(color) .. ".", {1, 0.4, 0.4})
+  return false
+end
+
+-- without the Advanced Turn Order: give every seated player a race, one at a time
+function RandomRaces_giveAll()
+  for i, color in ipairs(ATO_seatedPlayers()) do
+    Wait.time(function() RandomRaces_give(color) end, 0.5 + (i - 1) * RandomRaces_INTERVAL)
+  end
+end
+
+-- with the Advanced Turn Order: give the race of the player whose turn it is to pick
+function RandomRaces_giveCurrent()
+  local color = ATO.raceSlots[ATO.raceIndex]
+  Wait.time(function()
+    if ATO.phase == "race" and ATO.raceSlots[ATO.raceIndex] == color then RandomRaces_give(color) end
+  end, RandomRaces_INTERVAL - 1)
+end
