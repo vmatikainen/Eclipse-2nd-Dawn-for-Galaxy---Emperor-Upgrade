@@ -51,7 +51,7 @@ CombatSim_owner = nil    -- color whose ships are simulated
 CombatSim_viewer = nil   -- color the panel is shown to
 CombatSim_counts = { interceptor = 0, cruiser = 0, dreadnought = 0 }
 CombatSim_job = nil      -- the simulation running now
-CombatSim_runs = 5000    -- battles per simulation (chosen in the panel)
+CombatSim_runs = 1000    -- battles per simulation (chosen in the panel)
 CombatSim_lastResult = nil
 
 --------------------------------------------------------------------------------

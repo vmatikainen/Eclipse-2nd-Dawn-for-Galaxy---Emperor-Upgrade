@@ -201,7 +201,7 @@ Every player board has a **Combat Sim** button, between the Actions card and the
 Interceptor blueprint. It opens a panel where you set how many interceptors, cruisers and
 dreadnoughts attack, then pick the opponent: **Ancient**, **2 Ancients**, **GCDS**, or
 **Guardian** (shown when a Guardian is on the table). It plays 1000 or 5000 random
-battles (*Battles: 1k / 5k* at the top of the panel, 5k by default) and shows the odds of
+battles (*Battles: 1k / 5k* at the top of the panel, 1k by default) and shows the odds of
 winning and, when winning, how many of each ship survive on average.
 
 - Your ships are your blueprints as they are now, including upgrades. The NPCs are the
