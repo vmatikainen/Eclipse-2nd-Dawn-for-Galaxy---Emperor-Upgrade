@@ -79,11 +79,6 @@ local function shipLabel(color, ship)
   return string.format("%s %s", color, state.ships[ship].name)
 end
 
-local function cellText(name)
-  if name == false or name == nil then return "empty" end
-  return name
-end
-
 --------------------------------------------------------------------------------
 -- setup
 
@@ -177,9 +172,17 @@ function ShipState_place(obj, quiet)
   ShipState_tiles[part.guid] = { color = color, ship = ship, cell = cell }
   if not restoring then ShipState_updateTooltips(color, ship) end
   if not quiet then
-    local was = (cell == "muon") and "" or (" (was " .. cellText(state.cells[cell]) .. ")")
-    printToColor(shipLabel(color, ship) .. ": " .. name .. was .. ". " .. ShipState_summary(color, ship),
-                 color, {0.7, 0.9, 1})
+    -- Everyone sees upgrades. One short line: the TTS chat goes blank once it holds too much
+    -- text (/clear fixes it), and the ships' tooltips already show their stats.
+    local default = (cell ~= "muon") and state.cells[cell] or false
+    local replaces = (default and default ~= NO_SLOT) and (" (replaces " .. default .. ")") or ""
+    local text = shipLabel(color, ship) .. ": " .. name .. replaces .. "."
+    local warnings = ShipState_stats(color, ship).warnings
+    if #warnings > 0 then
+      printToAll(text .. " Warning: " .. table.concat(warnings, "; ") .. ".", {1, 0.4, 0.4})
+    else
+      printToAll(text, {0.7, 0.9, 1})
+    end
   end
   return true
 end
@@ -193,20 +196,13 @@ function ShipState_remove(obj, quiet)
   local player = ShipState[where.color]
   if player == nil or player.ships[where.ship] == nil then return false end
   local state = player.ships[where.ship]
-  local removed
   if where.cell == "muon" then
-    removed = state.muon
     state.muon = nil
   else
-    removed = state.placed[where.cell]
     state.placed[where.cell] = nil
   end
   if not restoring then ShipState_updateTooltips(where.color, where.ship) end
-  if not quiet and removed ~= nil then  -- printed default comes back by itself (placed[cell] is gone)
-    local back = (where.cell == "muon") and "" or (" (back to " .. cellText(state.cells[where.cell]) .. ")")
-    printToColor(shipLabel(where.color, where.ship) .. ": removed " .. removed.name .. back .. ". "
-                 .. ShipState_summary(where.color, where.ship), where.color, {0.7, 0.9, 1})
-  end
+  -- nothing in chat: the tooltip shows the change, and the chat fills up (see ShipState_place)
   return true
 end
 

@@ -1,0 +1,109 @@
+--------------------------------------------------------------------------------
+-- Action announcements: when a player puts an influence disc on an action during their
+-- own turn, everyone is told, e.g. "Sdeha did action Research". Taking it off again
+-- (during their turn) gives "Sdeha canceled action Research".
+--
+-- Action slots:
+--   - the player board, snap points 1-6: Explore, Research, Upgrade, Build, Move, Influence
+--     (see "Snap point convention" in CLAUDE.md)
+--   - the "Actions" card (the skip turn / pass side), 3 snap points: Upgrade, Build, Influence,
+--     left to right as seen from the owner's seat. The card is flipped when passing, so its
+--     own x axis can't be trusted for the order. The owner is ATO.actionCards[guid].
+--
+-- Whether the action is allowed isn't checked. Outside the owner's turn nothing is
+-- announced: moving discs then is taken as correcting mistakes. That needs the built-in
+-- turns: without them (standard turn order) every move is announced. Scripted moves (the
+-- "Return Influence" button) fire no pick-up or drop events, so they are never announced.
+-- A disc picked up from a slot and dropped back on the same slot announces nothing.
+--------------------------------------------------------------------------------
+
+ACTION_BOARD_ACTIONS = { "Explore", "Research", "Upgrade", "Build", "Move", "Influence" }
+ACTION_CARD_ACTIONS = { "Upgrade", "Build", "Influence" }
+
+local ACTION_SLOT_RADIUS = 0.45   -- world units; action slots are 1.1 or more apart
+
+ActionAnnounce_held = {}          -- disc GUID -> slot it was picked up from (false = none)
+
+local function isInfluenceDisc(obj)
+  if obj == nil or obj.type == "Bag" or obj.type == "Infinite" then return false end
+  for _, tag in ipairs(obj.getTags()) do
+    if tag == "Influence" then return true end
+  end
+  return false
+end
+
+local function near(position, target)
+  local dx, dz = position.x - target.x, position.z - target.z
+  return dx * dx + dz * dz <= ACTION_SLOT_RADIUS * ACTION_SLOT_RADIUS
+end
+
+-- the action slot at a table position: { color, action, key }, or nil
+function ActionAnnounce_slotAt(position)
+  for color, _ in pairs(PlayerState) do
+    local board = PlayerState_board(color)
+    if board ~= nil then
+      local snaps = board.getSnapPoints()
+      for i, action in ipairs(ACTION_BOARD_ACTIONS) do
+        if snaps[i] ~= nil and near(position, board.positionToWorld(snaps[i].position)) then
+          return { color = color, action = action, key = board.getGUID() .. " " .. i }
+        end
+      end
+    end
+  end
+
+  for guid, color in pairs(ATO.actionCards or {}) do
+    local card = getObjectFromGUID(guid)
+    if card ~= nil then
+      local spots = {}
+      for _, snap in ipairs(card.getSnapPoints()) do
+        table.insert(spots, card.positionToWorld(snap.position))
+      end
+      -- left to right as the owner sees it: seats at low z face +z, so their left is low x
+      local seatedLow = Player[color].getHandTransform().position.z < 0
+      table.sort(spots, function(a, b)
+        if seatedLow then return a.x < b.x else return a.x > b.x end
+      end)
+      for i, spot in ipairs(spots) do
+        if ACTION_CARD_ACTIONS[i] ~= nil and near(position, spot) then
+          return { color = color, action = ACTION_CARD_ACTIONS[i], key = guid .. " " .. i }
+        end
+      end
+    end
+  end
+  return nil
+end
+
+-- With the built-in turns on (Advanced Turn Order, or turns enabled by hand), only the
+-- current player's moves are announced. The standard turn order doesn't use them, so
+-- without turns there is no "current player" and every move is announced (the same rule
+-- as STO_pass).
+local function announce(slot, verb)
+  if Turns.enable and Turns.turn_color ~= slot.color then return end
+  broadcastToAll(string.format("%s %s action %s", ATO_name(slot.color), verb, slot.action),
+                 stringColorToRGB(slot.color))
+end
+
+--------------------------------------------------------------------------------
+-- events (called from Global's onObjectPickUp and onObjectDrop)
+
+function ActionAnnounce_onPickUp(obj)
+  if not isInfluenceDisc(obj) then return end
+  ActionAnnounce_held[obj.getGUID()] = ActionAnnounce_slotAt(obj.getPosition()) or false
+end
+
+function ActionAnnounce_onDrop(obj)
+  if not isInfluenceDisc(obj) then return end
+  local guid = obj.getGUID()
+  local from = ActionAnnounce_held[guid] or nil
+  ActionAnnounce_held[guid] = nil
+
+  -- wait for the disc to settle on its snap point
+  local settled = function()
+    if obj == nil or obj.isDestroyed() then return end
+    local to = ActionAnnounce_slotAt(obj.getPosition())
+    if from ~= nil and to ~= nil and from.key == to.key then return end
+    if from ~= nil then announce(from, "canceled") end
+    if to ~= nil then announce(to, "did") end
+  end
+  Wait.condition(settled, function() return obj == nil or obj.isDestroyed() or obj.resting end, 3, settled)
+end

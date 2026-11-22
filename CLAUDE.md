@@ -111,6 +111,8 @@ https://api.tabletopsimulator.com/
 - `include/ShipData.ttslua`, `include/ShipState.ttslua`, `include/HexState.ttslua`: ship data, ship
   state and hex state, included in Global.
 - `include/CombatZone.ttslua`: the combat zone area on the left side table (`CombatZone_*`).
+- `include/TechTrack.ttslua`: tech tiles dropped on a player board's tech tracks (`TechTrack_*`).
+- `include/ActionAnnounce.ttslua`: announces actions taken with influence discs (`ActionAnnounce_*`).
 - `include/SeatOrder.ttslua`: the "Randomize seat order" setup option (`SEAT_*`). Global
   calls it from `gameSetup`, `PlayerSetup` (which records picks for later and sets up
   factions through `placeFaction`), the Advanced Turn Order and the turn order panel.
@@ -451,6 +453,47 @@ resolve it themselves (damage, destroyed and escaped ships).
 - `Global.setVectorLines` replaces every global vector line, so the combat zone owns them.
   Anything else that wants lines must draw them through the component.
 
+### Tech tracks
+
+`TechTrack.ttslua` handles tech tiles (`Custom_Model`, tag `TechTile`, named
+`"<Track> Tech - <name>"`, e.g. `"Military Tech - Plasma Cannon"`) dropped on a player board.
+
+- When a dropped tile comes to rest on a tech space (snap points 47–67) of a board in
+  `PlayerState`, it's moved exactly onto the space, turned to the board's rotation
+  (`{0, board rotY, 0}`, the same relation the tiles have to the tech supply board), and locked.
+- The track must match the name: Military 47–53, Grid 54–60, Nano 61–67. `Rare Tech` tiles go
+  on any track. A tile on the wrong track, on a space that already has a tile, or on a space
+  with a printed start tech stays unlocked, and the player who dropped it gets a message.
+- `TECH_PRINTED[faction][snap]` lists the start techs printed on each board (all on space 1),
+  read from the board images.
+- **Part sources:** every ship-upgrade tech a player has (a locked tile, or a printed start tech
+  that has a `<Part> Parts` bag) gets a transparent, locked copy of that infinite bag over its
+  space, so dragging from the tech gives a part tile. Sources are tagged `TechPartSource`, with
+  GMNotes `TechSource <board GUID> <snap>`, and are saved with the table.
+  `TechTrack_reconcile()` makes them match the boards: on load, when a board is placed, when a
+  tile is locked in place, and when a locked tile is deleted. A source over a tile has a
+  "Remove tech tile" menu item, which unlocks the tile and removes the source.
+
+### Action announcements
+
+`ActionAnnounce.ttslua`: when a player drops an influence disc (tag `Influence`) on an action
+slot during their own turn (`Turns.turn_color`), everyone gets `<name> did action Research`.
+Taking it off during their turn gives `<name> canceled action Research`. `<name>` is
+`ATO_name(color)`.
+
+- Slots: player board snap points 1–6 (Explore, Research, Upgrade, Build, Move, Influence), and
+  the 3 snap points of the `Actions` card (the pass side): Upgrade, Build, Influence. The card is
+  flipped when passing, so its slots are ordered left to right as seen from the owner's seat,
+  not by the card's local x. The card's owner is `ATO.actionCards[guid]`.
+- The owner of the board or card is the player, whatever the disc's tint. Whether the action is
+  allowed isn't checked. Moves outside the owner's turn aren't announced (taken as fixing
+  mistakes), and neither are scripted moves (Return Influence), which fire no events.
+- "The owner's turn" needs TTS's built-in turns (`Turns.enable`), which only the Advanced Turn
+  Order switches on. With the standard turn order they're off, so every move is announced
+  (the same rule as `STO_pass`).
+- The slot a disc was picked up from is remembered until it's dropped, so putting it back on
+  the same slot announces nothing.
+
 ## Conventions
 
 - New feature code goes in its own component file (see "Includes"), and event handlers
@@ -458,4 +501,9 @@ resolve it themselves (damage, destroyed and escaped ships).
 - Match the existing style in files you edit. Global uses PascalCase for older functions,
   and new subsystems use a prefix (`ATO_`).
 - Tools in `tools/` use only the Python standard library.
+- **Keep chat output small.** The TTS chat goes blank once it holds too much text, and scripts
+  can't clear it (players type `/clear`). Don't print on every routine action: show state in
+  tooltips or UI, and keep chat for warnings, one-off events and lists a player asks for.
+  E.g. placing a ship part prints one short line to everyone (plus warnings), and removing one
+  prints nothing.
 - Scripts' line endings are preserved exactly (`.gitattributes` has `* -text`).
