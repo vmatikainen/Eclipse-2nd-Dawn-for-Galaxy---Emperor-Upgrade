@@ -1,0 +1,476 @@
+--------------------------------------------------------------------------------
+-- Combat simulator
+--------------------------------------------------------------------------------
+-- Every player board gets a "Combat Sim" button (between the Actions card and the
+-- Interceptor blueprint). It opens a panel (CombatSim_Panel in Global.-1.xml) where you
+-- set how many interceptors, cruisers and dreadnoughts attack, and simulate the battle
+-- against an Ancient, two Ancients, the GCDS or a Guardian: 1000 or 5000 Monte Carlo
+-- battles. It shows the odds of winning and, when winning, how many ships survive on
+-- average.
+--
+-- The ships are the board owner's blueprints now (ShipState_stats). The NPCs are the
+-- variants setup put on the table (ShipState_npcOf), so randomized Ancients, Guardians
+-- and GCDS are simulated as they are in this game.
+--
+-- Rules simulated:
+--  - Missiles fire first, once, in initiative order; then engagement rounds of cannons in
+--    initiative order until one side is gone. On a tie the defender (the NPC) fires first.
+--  - A die hits on 6, never on 1, otherwise when roll + computers - target shields >= 6.
+--  - A ship is destroyed when its damage is greater than its hull.
+--  - Ships without cannons (missile boats) escape after the missile volley. They count as
+--    survivors if the battle is won.
+--  - NPCs hit the biggest ship they can destroy, else the biggest ship. Players destroy
+--    what they can, the most damaged first. Morph Shield repairs 1 damage at the end of
+--    each engagement round.
+--  - Rift cannons roll the rift die (CombatSim_RIFT_FACES): miss, 1 damage, 2 damage,
+--    3 damage + 1 self damage, 1 self damage, miss. Its hits ignore computers and shields.
+--    Self damage goes to the shooter's own ships with rift weapons: destroying the largest
+--    ship it can (largest to smallest), else on the largest.
+--  - Not simulated: retreating (other than missile boats), Starbases.
+
+local CombatSim_RUN_CHOICES = { 1000, 5000 }  -- the battles per simulation the panel offers
+local CombatSim_PER_FRAME = 50      -- battles per frame, so the game doesn't freeze
+local CombatSim_MAX_ROUNDS = 100    -- a battle still going after this many rounds is lost
+-- position of the button on the player board (board-local). Buttons aren't mirrored like
+-- the snap points: negative x is the board's left side, seen from the owner's seat.
+local CombatSim_BUTTON_POSITION = {-2.0, 0.09, -0.8}
+
+local CombatSim_SHIPS = {
+  { ship = "interceptor", label = "Interceptors", max = 8, size = 1 },
+  { ship = "cruiser",     label = "Cruisers",     max = 4, size = 2 },
+  { ship = "dreadnought", label = "Dreadnoughts", max = 2, size = 3 },
+}
+local CombatSim_PLAIN = { ancient = "Ancient", guardian = "Guardian", gcds = "GCDS" }
+-- the rift die: damage to the target and damage to your own ships, per face
+local CombatSim_RIFT_FACES = {
+  { hit = 0, self = 0 }, { hit = 1, self = 0 }, { hit = 2, self = 0 },
+  { hit = 3, self = 1 }, { hit = 0, self = 1 }, { hit = 0, self = 0 },
+}
+
+CombatSim_owner = nil    -- color whose ships are simulated
+CombatSim_viewer = nil   -- color the panel is shown to
+CombatSim_counts = { interceptor = 0, cruiser = 0, dreadnought = 0 }
+CombatSim_job = nil      -- the simulation running now
+CombatSim_runs = 5000    -- battles per simulation (chosen in the panel)
+CombatSim_lastResult = nil
+
+--------------------------------------------------------------------------------
+-- the button on the player boards
+
+function CombatSim_addButton(board)
+  if board == nil then return end
+  for _, button in ipairs(board.getButtons() or {}) do
+    if button.click_function == "CombatSim_open" then return end
+  end
+  board.createButton({
+    click_function = "CombatSim_open",
+    function_owner = self,
+    label = "Combat Sim",
+    tooltip = "Simulate a battle of your ships against Ancients, the GCDS or a Guardian",
+    position = CombatSim_BUTTON_POSITION,
+    scale = {0.3, 0.3, 0.3},
+    width = 700,
+    height = 220,
+    font_size = 110,
+    color = {0.7573, 0.7573, 0.7573, 1},
+  })
+end
+
+-- called by onLoad: buttons made by scripts aren't saved
+function CombatSim_restore()
+  for color, _ in pairs(PlayerState) do CombatSim_addButton(PlayerState_board(color)) end
+end
+
+function CombatSim_ownerOf(board)
+  for color, _ in pairs(PlayerState) do
+    if PlayerState_board(color) == board then return color end
+  end
+  return nil
+end
+
+--------------------------------------------------------------------------------
+-- the panel
+
+function CombatSim_open(board, playerColor)
+  local owner = CombatSim_ownerOf(board)
+  if owner == nil then
+    broadcastToColor("Combat Sim: nobody has this player board yet.", playerColor, {1, 0.4, 0.4})
+    return
+  end
+  if owner ~= CombatSim_owner then
+    CombatSim_counts = { interceptor = 0, cruiser = 0, dreadnought = 0 }
+    CombatSim_lastResult = nil
+  end
+  CombatSim_owner = owner
+  CombatSim_viewer = playerColor
+  UI.setAttribute("CombatSim_Panel", "visibility", playerColor)
+  UI.setAttribute("CombatSim_Panel", "active", "true")
+  CombatSim_updateUI()
+end
+
+function CombatSim_close(player)
+  UI.setAttribute("CombatSim_Panel", "active", "false")
+end
+
+-- onClick of the "1k" / "5k" buttons
+function CombatSim_setRuns(player, value)
+  local runs = tonumber(value)
+  for _, choice in ipairs(CombatSim_RUN_CHOICES) do
+    if choice == runs then CombatSim_runs = runs end
+  end
+  CombatSim_updateUI()
+end
+
+function CombatSim_plus(player, ship) CombatSim_change(ship, 1) end
+function CombatSim_minus(player, ship) CombatSim_change(ship, -1) end
+
+function CombatSim_change(ship, delta)
+  for _, entry in ipairs(CombatSim_SHIPS) do
+    if entry.ship == ship then
+      local count = (CombatSim_counts[ship] or 0) + delta
+      if CombatSim_shipStats(ship) == nil then count = 0 end
+      CombatSim_counts[ship] = math.max(0, math.min(entry.max, count))
+    end
+  end
+  CombatSim_updateUI()
+end
+
+-- the owner's blueprint stats for a ship type, or nil (e.g. Rho Indi has no dreadnought)
+function CombatSim_shipStats(ship)
+  if CombatSim_owner == nil then return nil end
+  return ShipState_stats(CombatSim_owner, ship)
+end
+
+local function CombatSim_diceText(list, suffix)
+  local parts = {}
+  for _, die in ipairs(list or {}) do
+    table.insert(parts, string.format("%d %s%s", die.count, die.color, suffix))
+  end
+  return parts
+end
+
+-- "Init 3, 2 yellow, +1 comp, shield 1, hull 2"
+function CombatSim_statLine(stats)
+  local parts = { "Init " .. stats.initiative }
+  for _, text in ipairs(CombatSim_diceText(stats.missiles, " missile")) do table.insert(parts, text) end
+  for _, text in ipairs(CombatSim_diceText(stats.cannons, "")) do table.insert(parts, text) end
+  if stats.computer > 0 then table.insert(parts, "+" .. stats.computer .. " comp") end
+  if stats.shield > 0 then table.insert(parts, "shield " .. stats.shield) end
+  table.insert(parts, "hull " .. stats.hull)
+  return table.concat(parts, ", ")
+end
+
+function CombatSim_updateUI()
+  local faction = PlayerState_faction(CombatSim_owner) or "-"
+  UI.setValue("CombatSim_Owner", ATO_name(CombatSim_owner) .. " (" .. faction .. ")")
+  for _, entry in ipairs(CombatSim_SHIPS) do
+    local stats = CombatSim_shipStats(entry.ship)
+    if stats == nil then CombatSim_counts[entry.ship] = 0 end
+    UI.setValue("CombatSim_" .. entry.ship .. "_Count", tostring(CombatSim_counts[entry.ship]))
+    UI.setValue("CombatSim_" .. entry.ship .. "_Info", stats and CombatSim_statLine(stats) or "(none)")
+  end
+  for _, choice in ipairs(CombatSim_RUN_CHOICES) do
+    UI.setAttribute("CombatSim_Runs" .. choice, "color", choice == CombatSim_runs and "#9fd59f" or "#d0d0d0")
+  end
+  UI.setAttribute("CombatSim_Guardian", "active", CombatSim_npcVariant("guardian") and "true" or "false")
+  if CombatSim_job == nil then
+    UI.setValue("CombatSim_Result", CombatSim_lastResult or "Set your ships, then pick an opponent.")
+  end
+end
+
+--------------------------------------------------------------------------------
+-- the NPC variants in this game
+
+-- the variant of an NPC type on the table, or nil if there is none. The miniature setup
+-- put out wins over the stock bag the sector ancients come from.
+function CombatSim_npcVariant(npc)
+  local onTable, inBags = {}, {}
+  for _, obj in ipairs(getAllObjects()) do
+    local variant = ShipState_npcOf(obj)
+    if variant ~= nil and NPC_SHIPS[variant].npc == npc then
+      if obj.type == "Infinite" then inBags[variant] = true else onTable[variant] = true end
+    end
+  end
+  for _, found in ipairs({ onTable, inBags }) do
+    local pick = nil
+    for variant, _ in pairs(found) do
+      if pick == nil or pick == CombatSim_PLAIN[npc] then pick = variant end
+    end
+    if pick ~= nil then return pick end
+  end
+  return nil
+end
+
+--------------------------------------------------------------------------------
+-- the simulation
+
+local function CombatSim_dice(list)
+  local damages = {}
+  for _, die in ipairs(list or {}) do
+    if not die.rift then
+      for _ = 1, die.count do table.insert(damages, die.damage or 1) end
+    end
+  end
+  return damages
+end
+
+local function CombatSim_riftDice(list)
+  local count = 0
+  for _, die in ipairs(list or {}) do
+    if die.rift then count = count + die.count end
+  end
+  return count
+end
+
+function CombatSim_template(stats, side, ship, size)
+  local cannons = CombatSim_dice(stats.cannons)
+  local rift = CombatSim_riftDice(stats.cannons)
+  return {
+    side = side, ship = ship, size = size,
+    initiative = stats.initiative, computer = stats.computer, shield = stats.shield,
+    hp = stats.hull + 1,
+    cannons = cannons, missiles = CombatSim_dice(stats.missiles), rift = rift,
+    regenerate = stats.regenerate == true,
+    escapes = side == "player" and #cannons == 0 and rift == 0,
+  }
+end
+
+-- a hit from the rift die (auto) always hits
+function CombatSim_canHit(hit, computer, target)
+  if hit.auto then return true end
+  local roll = hit.roll
+  if roll == 6 then return true end
+  if roll == 1 then return false end
+  return roll + computer - target.tpl.shield >= 6
+end
+
+local function CombatSim_damage(target, amount)
+  target.dmg = target.dmg + amount
+  if target.dmg >= target.tpl.hp then target.alive = false end
+end
+
+-- assign one ship's hits to ships (the enemy's, or its own for rift self damage).
+-- bySize: aim at the biggest ships first (NPCs, and rift self damage)
+function CombatSim_assign(hits, computer, enemies, bySize)
+  local targets = {}
+  for _, ship in ipairs(enemies) do
+    if ship.alive and not ship.gone then table.insert(targets, ship) end
+  end
+  if #targets == 0 then return end
+
+  -- biggest ships first if bySize; both sides prefer ships that are already damaged
+  table.sort(targets, function(a, b)
+    if bySize and a.tpl.size ~= b.tpl.size then return a.tpl.size > b.tpl.size end
+    return a.dmg > b.dmg
+  end)
+  table.sort(hits, function(a, b) return a.dmg > b.dmg end)
+
+  -- 1. destroy what can be destroyed, in target order
+  local used = {}
+  for _, target in ipairs(targets) do
+    local need = target.tpl.hp - target.dmg
+    -- the smallest single hit that destroys it
+    local single = nil
+    for i, hit in ipairs(hits) do
+      if not used[i] and hit.dmg >= need and CombatSim_canHit(hit, computer, target) then single = i end
+    end
+    if single ~= nil then
+      used[single] = true
+      CombatSim_damage(target, hits[single].dmg)
+    else
+      -- else the biggest hits until it is destroyed
+      local pick, total = {}, 0
+      for i, hit in ipairs(hits) do
+        if total < need and not used[i] and CombatSim_canHit(hit, computer, target) then
+          table.insert(pick, i)
+          total = total + hit.dmg
+        end
+      end
+      if total >= need then
+        for _, i in ipairs(pick) do used[i] = true end
+        CombatSim_damage(target, total)
+      end
+    end
+  end
+
+  -- 2. the rest goes on the first ship each hit can reach
+  for i, hit in ipairs(hits) do
+    if not used[i] then
+      for _, target in ipairs(targets) do
+        if target.alive and CombatSim_canHit(hit, computer, target) then
+          CombatSim_damage(target, hit.dmg)
+          break
+        end
+      end
+    end
+  end
+end
+
+-- one battle. groups: { {tpl, count} } in firing order. Returns won, the player's ships.
+function CombatSim_battle(groups)
+  local sides = { player = {}, npc = {} }
+  local order = {}
+  for _, group in ipairs(groups) do
+    local members = {}
+    for _ = 1, group.count do
+      local ship = { tpl = group.tpl, dmg = 0, alive = true, gone = false }
+      table.insert(members, ship)
+      table.insert(sides[group.tpl.side], ship)
+    end
+    table.insert(order, { tpl = group.tpl, members = members })
+  end
+
+  local function standing(side)
+    local count = 0
+    for _, ship in ipairs(sides[side]) do
+      if ship.alive and not ship.gone then count = count + 1 end
+    end
+    return count
+  end
+
+  -- own ships with rift weapons: they take the rift die's self damage
+  local riftShips = { player = {}, npc = {} }
+  for side, ships in pairs(sides) do
+    for _, ship in ipairs(ships) do
+      if ship.tpl.rift > 0 then table.insert(riftShips[side], ship) end
+    end
+  end
+
+  local function volley(kind)
+    for _, group in ipairs(order) do
+      local tpl = group.tpl
+      local dice = tpl[kind]
+      local rift = kind == "cannons" and tpl.rift or 0
+      if #dice > 0 or rift > 0 then
+        local enemies = sides[tpl.side == "player" and "npc" or "player"]
+        for _, ship in ipairs(group.members) do
+          if ship.alive and not ship.gone then
+            local hits, selfHits = {}, {}
+            for _, damage in ipairs(dice) do
+              table.insert(hits, { roll = math.random(6), dmg = damage })
+            end
+            for _ = 1, rift do
+              local face = CombatSim_RIFT_FACES[math.random(6)]
+              if face.hit > 0 then table.insert(hits, { auto = true, dmg = face.hit }) end
+              if face.self > 0 then table.insert(selfHits, { auto = true, dmg = face.self }) end
+            end
+            CombatSim_assign(hits, tpl.computer, enemies, tpl.side == "npc")
+            if #selfHits > 0 then CombatSim_assign(selfHits, 0, riftShips[tpl.side], true) end
+          end
+        end
+      end
+    end
+  end
+
+  volley("missiles")
+  -- missile boats leave once they have fired
+  for _, ship in ipairs(sides.player) do
+    if ship.alive and ship.tpl.escapes then ship.gone = true end
+  end
+
+  local rounds = 0
+  while standing("player") > 0 and standing("npc") > 0 and rounds < CombatSim_MAX_ROUNDS do
+    rounds = rounds + 1
+    volley("cannons")
+    -- Morph Shield: repair 1 damage at the end of each engagement round
+    for _, side in pairs(sides) do
+      for _, ship in ipairs(side) do
+        if ship.alive and ship.tpl.regenerate and ship.dmg > 0 then ship.dmg = ship.dmg - 1 end
+      end
+    end
+  end
+  return standing("npc") == 0, sides.player
+end
+
+-- onClick of the opponent buttons: "ancient", "ancient2" (two Ancients), "gcds", "guardian"
+function CombatSim_simulate(player, opponent)
+  if CombatSim_job ~= nil then return end
+  local npc = opponent == "ancient2" and "ancient" or opponent
+  local npcCount = opponent == "ancient2" and 2 or 1
+  local variant = CombatSim_npcVariant(npc) or (npc ~= "guardian" and CombatSim_PLAIN[npc]) or nil
+  if variant == nil then
+    UI.setValue("CombatSim_Result", "There is no Guardian in this game.")
+    return
+  end
+
+  local groups, notes, fleet = {}, {}, {}
+  local total = 0
+  for _, entry in ipairs(CombatSim_SHIPS) do
+    local count = CombatSim_counts[entry.ship] or 0
+    local stats = CombatSim_shipStats(entry.ship)
+    if count > 0 and stats ~= nil then
+      local tpl = CombatSim_template(stats, "player", entry.ship, entry.size)
+      table.insert(groups, { tpl = tpl, count = count })
+      fleet[entry.ship] = count
+      total = total + count
+      if tpl.escapes then
+        table.insert(notes, entry.label .. " have no cannons: they escape after the missiles.")
+      end
+    end
+  end
+  if total == 0 then
+    UI.setValue("CombatSim_Result", "Add at least one ship.")
+    return
+  end
+  local npcStats = ShipState_npcStats(variant)
+  table.insert(groups, { tpl = CombatSim_template(npcStats, "npc", "npc", 0), count = npcCount })
+
+  -- firing order: initiative, the defender (NPC) first on a tie
+  table.sort(groups, function(a, b)
+    if a.tpl.initiative ~= b.tpl.initiative then return a.tpl.initiative > b.tpl.initiative end
+    return a.tpl.side == "npc" and b.tpl.side ~= "npc"
+  end)
+
+  CombatSim_job = {
+    groups = groups, fleet = fleet, notes = notes, done = 0, wins = 0, runs = CombatSim_runs,
+    survivors = { interceptor = 0, cruiser = 0, dreadnought = 0 },
+    title = (npcCount == 2 and "2 x " or "") .. variant,
+    npcLine = CombatSim_statLine(npcStats),
+  }
+  UI.setValue("CombatSim_Result", "Simulating...")
+  startLuaCoroutine(self, "CombatSim_run")
+end
+
+-- runs as a coroutine: CombatSim_PER_FRAME battles per frame
+function CombatSim_run()
+  local job = CombatSim_job
+  while job.done < job.runs do
+    for _ = 1, CombatSim_PER_FRAME do
+      if job.done >= job.runs then break end
+      job.done = job.done + 1
+      local won, ships = CombatSim_battle(job.groups)
+      if won then
+        job.wins = job.wins + 1
+        for _, ship in ipairs(ships) do
+          if ship.alive then
+            job.survivors[ship.tpl.ship] = job.survivors[ship.tpl.ship] + 1
+          end
+        end
+      end
+    end
+    UI.setValue("CombatSim_Result", string.format("Simulating... %d / %d", job.done, job.runs))
+    coroutine.yield(0)
+  end
+  CombatSim_job = nil
+  CombatSim_showResult(job)
+  return 1
+end
+
+function CombatSim_showResult(job)
+  local lines = {
+    "<b>vs " .. job.title .. "</b>  (" .. job.npcLine .. ")",
+    string.format("<b>Win: %.1f %%</b>  (%d battles)", 100 * job.wins / job.runs, job.runs),
+  }
+  if job.wins > 0 then
+    table.insert(lines, "Surviving ships when winning (average):")
+    for _, entry in ipairs(CombatSim_SHIPS) do
+      local count = job.fleet[entry.ship]
+      if count ~= nil then
+        table.insert(lines, string.format("  %s: %.2f of %d", entry.label, job.survivors[entry.ship] / job.wins, count))
+      end
+    end
+  end
+  for _, note in ipairs(job.notes) do table.insert(lines, "<i>" .. note .. "</i>") end
+  CombatSim_lastResult = table.concat(lines, "\n")
+  UI.setValue("CombatSim_Result", CombatSim_lastResult)
+end

@@ -324,6 +324,7 @@ function onLoad(saveData)
       ShipState_restore()
       HexState_restore(savedHexes)
       TechTrack_reconcile()
+      CombatSim_restore()
     end, 1)
     addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
     addContextMenuItem("Show NPC ships", function(player_color) ShipState_npcReport(player_color) end)
@@ -856,6 +857,8 @@ function placeFaction(color, faction)
     local funcInfluenceSetup = function() setupPlayerInfluence(Object, PlayerColor, Faction.Influence-1) end
     triggerFunctionIfResting(Object, funcInfluenceSetup)
     triggerFunctionIfResting(Object, TechTrack_reconcile)
+    local board = Object
+    triggerFunctionIfResting(Object, function() CombatSim_addButton(board) end)
 
     if (Faction.Name =='Wardens of Magellan') then
       local funcMagellanSetup  = function() setupMagellan(Object, InvPos) end
@@ -2890,3 +2893,9 @@ end
 -- Race buttons shown only to the player picking (scripts/include/RaceButtons.ttslua)
 --------------------------------------------------------------------------------
 #include RaceButtons
+
+
+--------------------------------------------------------------------------------
+-- Combat simulator on the player boards (scripts/include/CombatSim.ttslua)
+--------------------------------------------------------------------------------
+#include CombatSim

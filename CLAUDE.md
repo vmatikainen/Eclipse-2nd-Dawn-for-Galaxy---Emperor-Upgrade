@@ -141,6 +141,12 @@ https://api.tabletopsimulator.com/
   races out through `PlayerSetup`, reading each race button's faction table with
   `getTable`. Global calls it from `PlayerSetup` and the turn order code
   (`ATO_advanceRacePick` gives the current race).
+- `include/CombatSim.ttslua`: the "Combat Sim" button on every player board and its panel
+  (`CombatSim_Panel` in the XML): Monte Carlo battles of the board owner's ships
+  (`ShipState_stats`) against the NPC variants on the table (`ShipState_npcOf`). The battle
+  rules it simulates, and what it leaves out, are at the top of the file. The button is
+  added in `placeFaction` and again on load (`CombatSim_restore`: script buttons aren't
+  saved). Rift dice: `CombatSim_RIFT_FACES`. The simulation runs as a coroutine (`startLuaCoroutine`), a few battles per frame.
 - `include/RaceButtons.ttslua`: hides the race buttons from everyone except the player
   picking a race (`RaceButtons_update`, with `setInvisibleTo`). Called when the race pick
   changes, when race selection ends, and from `updateGameStateBasedOnSettings` (which
