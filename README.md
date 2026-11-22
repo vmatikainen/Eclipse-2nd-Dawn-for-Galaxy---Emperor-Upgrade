@@ -141,6 +141,35 @@ built-in turn indicator (top right) shows the current order, and a small *Next r
 at the top of the screen, just left of it, shows the order for the next round. Passed players still get turns, so they can take reactions as in the base
 rules. To skip them instead, set `ATO_KEEP_TURNS_AFTER_PASS = false` in `scripts/Global.-1.lua`.
 
+## Randomize seat order
+
+Tick **Randomize seat order** under *House Rules* in the setup popup, and pick when it
+happens in the dropdown next to it:
+
+- **Before drafting:** when *Setup* is pressed, before the Advanced Turn Order draft.
+  Without the Advanced Turn Order this works like *Before race selection*.
+- **Before race selection:** after the draft, or when *Setup* is pressed if there is no draft.
+- **After race selection** (default): players pick factions first, but nothing is set
+  up yet. Once everyone has picked, the seats are randomized and each faction is set up
+  at its player's new seat.
+
+The seated players are moved to a random order of the seats they already use, by
+changing their player colors. Draft results, race picks and the turn order go with the
+player. Factions can only be picked after *Setup* is pressed. This works in hot seat too:
+the hot seat players are moved between the colors in the same way.
+
+## Random races
+
+Tick **Random races** under *Options* in the setup popup. Nobody picks a race: after
+*Setup*, every seated player is given a random one.
+
+- The six Terran races count as one race in the draw. A player who draws it gets the
+  Terran race of their own color (Purple gets the black one, Terran Alliance).
+- Pyxis Unity is never drawn. Expansion races are only drawn with *Expansion Species*.
+- With the **Advanced Turn Order** there is no draft. The random order revealed after
+  *Setup* is the round 1 turn order, and races are given out in that order.
+- **Randomize seat order** works with it as with picked races.
+
 ## Player colors and hot seat
 
 The table has seats for six player colors: **White, Red, Yellow, Blue, Green and Purple**.
