@@ -1470,6 +1470,120 @@ function onObjectDrop(_, obj)
             function() return rest(obj) end,
             2)
     end
+    watchSector(obj)
+end
+
+
+-- Populate explored sectors --------------------------------------------------
+-- When a sector tile is placed and locked, its discovery tile (face down) and
+-- its ancient / guardian ships are put on it automatically.
+-- Sector number -> what the tile shows in its centre (read from the tile art).
+local SectorContents = {
+  -- Sector I
+  ['101'] = {ancients = 1}, ['104'] = {ancients = 2}, ['105'] = {ancients = 1},
+  ['108'] = {ancients = 1}, ['109'] = {ancients = 2}, ['110'] = {},
+  -- Sector II
+  ['203'] = {ancients = 2}, ['204'] = {ancients = 1}, ['211'] = {ancients = 1},
+  ['214'] = {ancients = 1}, ['206'] = {}, ['207'] = {}, ['208'] = {}, ['281'] = {},
+  -- Guardian sectors
+  ['271'] = {guardians = 1}, ['272'] = {guardians = 1},
+  ['273'] = {guardians = 1}, ['274'] = {guardians = 1},
+  -- Sector III
+  ['301'] = {ancients = 2}, ['302'] = {ancients = 1}, ['303'] = {ancients = 1},
+  ['305'] = {ancients = 1}, ['311'] = {}, ['312'] = {}, ['313'] = {}, ['314'] = {},
+  ['315'] = {}, ['316'] = {}, ['381'] = {}, ['382'] = {},
+}
+-- every entry above has a discovery tile; ships go on top of it
+
+local WatchedSectors = {}   -- GUID -> true: dropped, waiting to be locked
+local SectorWatchTimer = nil
+
+function isSectorTile(obj)
+  local name = obj.getName()
+  return name == "Sector 1" or name == "Sector 2" or name == "Sector 3"
+      or name == "Guardian Sector"
+end
+
+function isSectorPopulated(guid)
+  return table.contains(settings.PopulatedSectors or {}, guid)
+end
+
+function watchSector(obj)
+  if not settings.setupCompleted or not isSectorTile(obj) then return end
+  if SectorContents[obj.getDescription()] == nil then return end
+  if isSectorPopulated(obj.getGUID()) then return end
+  WatchedSectors[obj.getGUID()] = true
+  if SectorWatchTimer == nil then
+    SectorWatchTimer = Wait.time(checkWatchedSectors, 0.5, -1)
+  end
+end
+
+function checkWatchedSectors()
+  local remaining = false
+  for guid in pairs(WatchedSectors) do
+    local obj = getObjectFromGUID(guid)
+    if obj == nil or isSectorPopulated(guid) then
+      WatchedSectors[guid] = nil      -- put back in a bag, or already done
+    elseif obj.getLock() and obj.held_by_color == nil and not obj.is_face_down then
+      WatchedSectors[guid] = nil
+      populateSector(obj)
+    else
+      remaining = true
+    end
+  end
+  if not remaining then
+    Wait.stop(SectorWatchTimer)
+    SectorWatchTimer = nil
+  end
+end
+
+-- the infinite bag of ancient / guardian ships that setup left on the table
+function findShipSource(tag)
+  for _, o in ipairs(getObjectsWithTag(tag)) do
+    if o.type == "Infinite" then return o end
+  end
+  return nil
+end
+
+function populateSector(sector)
+  local contents = SectorContents[sector.getDescription()]
+  settings.PopulatedSectors = settings.PopulatedSectors or {}
+  table.insert(settings.PopulatedSectors, sector.getGUID())
+
+  local center = sector.getPosition()
+  local yaw = sector.getRotation().y
+
+  if DiscoveryBag ~= nil and DiscoveryBag.getQuantity() > 0 then
+    DiscoveryBag.takeObject({
+      position = center + Vector(0, 0.5, 0),
+      rotation = {180, yaw, 0},
+      smooth = false })
+  else
+    broadcastToAll("No discovery tiles left for sector " .. sector.getDescription(), {1, 0.5, 0})
+  end
+
+  local ships = contents.ancients or contents.guardians or 0
+  if ships == 0 then return end
+  local tag = contents.ancients and "Ancient" or "Guardian"
+  local source = findShipSource(tag)
+  if source == nil then
+    broadcastToAll("Could not find the " .. tag .. " ships to place on sector " .. sector.getDescription(), {1, 0.5, 0})
+    return
+  end
+  -- two ships are stacked, the top one shifted slightly so both stay visible
+  -- (about 80% overlap), in the sector's own orientation
+  local offsets = (ships == 1) and {0} or {-0.15, 0.15}
+  local r = math.rad(yaw)
+  for i, dx in ipairs(offsets) do
+    local offset = Vector(dx * math.cos(r), 0, -dx * math.sin(r))
+    -- wait a moment so each ship lands on top of the discovery tile
+    Wait.time(function()
+      source.takeObject({
+        position = center + offset + Vector(0, 1 + 0.5 * i, 0),
+        rotation = {0, yaw, 0},
+        smooth = false })
+    end, 0.3 * i)
+  end
 end
 
 --
