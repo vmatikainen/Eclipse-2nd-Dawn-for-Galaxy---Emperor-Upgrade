@@ -14,6 +14,10 @@ Fixes:
                          the bags turned 30 degrees off the grid.
   reputation-bag-random  The Reputation Tiles bag draws in random order (Bag.Order = 2). It was
                          last in, first out, so a just-returned tile was drawn next.
+  setup-background       The setup popup's background (UI asset "SetupOptions") is our
+                         emperor_background.jpg: SETUP_BACKGROUND_URL once it is uploaded, until
+                         then the image in the repository root as a local file:/// URL (only on
+                         a computer that has the file; without it the original stays).
 
 Only the values these rules touch change; the rest of the mod file stays byte-for-byte identical.
 """
@@ -29,6 +33,10 @@ from annotate_boards import DEFAULT_MOD  # noqa: E402
 SECTOR_BAGS = {'Sector I Tiles', 'Sector II Tiles', 'Sector III Tiles', 'Galactic Events', 'Guardian Sectors'}
 REPUTATION_BAG_GUID = '3c5d08'
 RANDOM_ORDER = 2
+SETUP_ASSET = 'SetupOptions'
+SETUP_BACKGROUND_URL = None  # the uploaded image's Steam Cloud URL, once there is one
+SETUP_BACKGROUND_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                     'emperor_background.jpg')
 
 
 def walk(objects):
@@ -83,7 +91,44 @@ def reputation_bag_random(mod):
     return []
 
 
-FIXES = [('sector-tiles-aligned', sector_tiles_aligned), ('reputation-bag-random', reputation_bag_random)]
+def setup_background_url():
+    if SETUP_BACKGROUND_URL:
+        return SETUP_BACKGROUND_URL
+    if os.path.exists(SETUP_BACKGROUND_FILE):
+        return 'file:///' + SETUP_BACKGROUND_FILE.replace(os.sep, '/')
+    return None
+
+
+def setup_background(mod):
+    url = setup_background_url()
+    if url is None:
+        return []
+    asset = next((a for a in mod.get('CustomUIAssets') or [] if a.get('Name') == SETUP_ASSET), None)
+    if asset is None:
+        raise ValueError(f'no UI asset named {SETUP_ASSET}')
+    if asset.get('URL') == url:
+        return []
+    return [('ui-asset-url', SETUP_ASSET, asset.get('URL'), url)]
+
+
+def set_asset_url(raw, name, old, new):
+    """Point the UI asset `name` at a new URL; return the new raw text."""
+    key = f'"Name": {json.dumps(name)}'
+    start = raw.index('"CustomUIAssets"')
+    at = raw.index(key, start)
+    old_text = f'"URL": {json.dumps(old)}'
+    url_at = raw.index(old_text, at)
+    return raw[:url_at] + f'"URL": {json.dumps(new)}' + raw[url_at + len(old_text):]
+
+
+def apply_edit(raw, edit):
+    if edit[0] == 'ui-asset-url':
+        return set_asset_url(raw, *edit[1:])
+    return set_number(raw, *edit)
+
+
+FIXES = [('sector-tiles-aligned', sector_tiles_aligned), ('reputation-bag-random', reputation_bag_random),
+         ('setup-background', setup_background)]
 
 
 def main():
@@ -101,7 +146,7 @@ def main():
         edits = fix(mod)
         print(f'{name:<24} {len(edits):>3} value(s) to change' if edits else f'{name:<24} already applied')
         for edit in edits:
-            raw = set_number(raw, *edit)
+            raw = apply_edit(raw, edit)
         total += len(edits)
 
     if args.check:

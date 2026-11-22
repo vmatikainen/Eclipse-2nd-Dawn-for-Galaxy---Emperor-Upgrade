@@ -63,7 +63,7 @@ memory. Rule books are in the mod as `Rulebook` PDFs.
 | `2348417296.json` | **Local only, git-ignored.** The mod file TTS loads: every object on the table, scripts embedded as one-line strings. Rebuilt from the repo with `tools/rebuild_mod.py`. Will be renamed when we get our own Workshop ID. |
 | `scripts/` | Scripts extracted from the mod file. **Edit these**, never the JSON directly. |
 | `tools/rebuild_mod.py` | Rebuilds a local mod file from the repo: `tts_scripts.py build` + `apply_object_fixes.py` + `normalize_board_snaps.py`. `--mod` for another file. |
-| `tools/apply_object_fixes.py` | Rules for our changes to objects in the mod JSON: sector tiles aligned in their bags, Reputation bag drawing in random order. `--check` exits 1 if a rule still needs applying. |
+| `tools/apply_object_fixes.py` | Rules for our changes to objects in the mod JSON: sector tiles aligned in their bags, Reputation bag drawing in random order, the setup popup background (`emperor_background.jpg`; a local `file:///` URL until `SETUP_BACKGROUND_URL` is set to an uploaded copy). `--check` exits 1 if a rule still needs applying. |
 | `tools/tts_scripts.py` | `extract` / `build` / `check` scripts between `scripts/` and the mod JSON. |
 | `tools/normalize_board_snaps.py` | Puts every player board's snap points into the canonical order (see "Snap point convention"). `--check` exits 1 if a board isn't normalized. Edits only the boards' snap point arrays. |
 | `tools/annotate_boards.py` | Draws every player board's snap points, numbered and coloured by tag, on its image → `board-maps/`. Re-run after changing board snap points. |

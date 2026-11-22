@@ -201,10 +201,10 @@
 
 <Panel id="SetupPanel"
 	width="400"
-    height="740"
+    height="872"
 	active = "false"
     rectAlignment="UpperCenter"
-    offsetXY="0 -180"
+    offsetXY="0 -160"
 	visibility= "White|Red|Blue|Purple|Yellow|Green|Pink|Orange|Teal|Brown|Black|Grey"
     hideAnimation="FadeOut"
     animationDuration="0.5"
@@ -219,14 +219,12 @@
 	<Button id="closeButton" class="topButtons" rectAlignment="UpperRight" color="#990000" textColor="#FFFFFF" text="X" onClick="closeSetupPanel"></Button>
 
 
-    <Panel offsetXY="0 -35" color="rgb(0.5, 0.5, 0.5)" width="396" height="734" outline="Grey" outlineSize="2 -2">
+    <Panel offsetXY="0 -35" color="rgb(0.5, 0.5, 0.5)" width="396" height="866" outline="Grey" outlineSize="2 -2">
 		<!-- Background image-->
 		<Image image="SetupOptions" preserveAspect="true" rectAlignment="UpperLeft"> </Image>
 
-		<!-- All content displayed over the background image-->
-		<VerticalLayout offsetXY="0 -130" padding="10 10 10 170">
-
-			<Text alignment="UpperCenter"> If closed, this menu can be reopened via the "Setup Options" button on the top left of the screen.</Text>
+		<!-- All content displayed over the background image, below the title text at its top -->
+		<VerticalLayout padding="10 10 270 30">
 
   			<!-- Expansions -->
 			<VerticalLayout padding="10 10 10 0" preferredHeight="50"
