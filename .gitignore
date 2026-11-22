@@ -1,7 +1,6 @@
 *
 !.gitignore
 !.gitattributes
-!2348417296.json
 !scripts/
 !scripts/*.lua
 !scripts/*.xml
@@ -12,3 +11,6 @@
 !board-maps/
 !board-maps/*.svg
 !board-maps/index.html
+!.claude/
+!.claude/skills/
+!.claude/skills/**
