@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1380" width="1500" height="1380">
+<rect width="100%" height="100%" fill="#222"/>
+<text x="20" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#fff">Ancient technology: Discovery tiles that are ship parts (18)</text>
+<svg x="40" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135692138/5ED91AD625B7BA35312E29F5C9644D610EA4E637/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Antimatter Missile</text>
+<text x="150" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 red missile (4 dmg)</text>
+<svg x="340" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135685775/41CC6A743F1E7F215C093D1561751406E02EE2A3/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Axion Computer</text>
+<text x="450" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +1 · computer +2</text>
+<svg x="640" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135693593/2C5B8FF5B58921F24FAB3FC266FB7305E1393B64/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Conformal Drive</text>
+<text x="750" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +2 · move 4 · energy -2</text>
+<svg x="940" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135679936/152442807A774E70273596EA8CA894957D278F38/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Flux Shield</text>
+<text x="1050" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +1 · shield 3 · energy -2</text>
+<svg x="1240" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135683299/84E15FF9C377226A4754807D1605D21915638638/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1350" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Hypergrid Source</text>
+<text x="1350" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">energy +11</text>
+<svg x="40" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135692773/66E98F590A9938406BC56A7360C1EB2A543ABFD0/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Inversion Shield</text>
+<text x="150" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">shield 2 · energy +2</text>
+<svg x="340" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135691425/8EF250A6707B2FDCE4783FA5BC2D3734C8112916/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ion Disruptor</text>
+<text x="450" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 yellow die (1 dmg) · init +3</text>
+<svg x="640" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135690739/C34084A2AE809E7C5F165079C870FEB7F2CA3094/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ion Missile</text>
+<text x="750" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">3 yellow missiles (1 dmg)</text>
+<svg x="940" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135686872/6E6AC643C401D8B7857CF9A32D5B8110139838AF/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ion Turret</text>
+<text x="1050" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 yellow dice (1 dmg)</text>
+<svg x="1240" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135676045/AFF7C4D57C038CBF493B0E3061DFA344C6586667/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1350" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Jump Drive</text>
+<text x="1350" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">energy -2 · jump drive</text>
+<svg x="40" y="730" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135684428/2A628049D6B4D40DDDECD6261737B11F84CEA3D2/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Morph Shield</text>
+<text x="150" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +1 · shield 1 · regenerates</text>
+<svg x="340" y="730" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135687648/2A2B955CFAB9313C0DAA6904546B072A486917FF/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Muon Source</text>
+<text x="450" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +1 · energy +2</text>
+<svg x="640" y="730" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135696421/A4C7DD41A7192314B08F705062551DCB4E9A3F39/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Nonlinear Drive</text>
+<text x="750" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">move 2 · energy +2</text>
+<svg x="940" y="730" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135675338/09599081D9AA44FA1131916A7F661FB1B60CF36F/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Plasma Turret</text>
+<text x="1050" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 orange dice (2 dmg) · energy -3</text>
+<svg x="1240" y="730" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135688285/934A681A7F6FB1BEDE48CDED1D6A213C6E9B218F/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1350" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Rift Conductor</text>
+<text x="1350" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 pink die (rift) · hull 1 ·</text>
+<text x="1350" y="1022" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">energy -1</text>
+<svg x="40" y="1060" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135682721/4FDF34B11332B69A8E5C15551DB3922B6705B886/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Shard Hull</text>
+<text x="150" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">hull 3</text>
+<svg x="340" y="1060" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135678677/D61B38DE17EF14D170C8C6C034544B0E51EF67EF/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Soliton Charger</text>
+<text x="450" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 blue die (3 dmg) · energy -1</text>
+<svg x="640" y="1060" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135689701/CE7ADC6E5AE4C5A019D6B0F83402DADF0E83DBB1/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Soliton Missile</text>
+<text x="750" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 blue missile (3 dmg) · init +1</text>
+</svg>

@@ -1,0 +1,428 @@
+--------------------------------------------------------------------------------
+-- Ship state: each player's ship blueprints as they are now.
+--
+-- When a color picks a race, that race's reference blueprints (SHIP_BLUEPRINTS in
+-- ShipData) are copied to the player. A ship part tile dropped on a blueprint slot of
+-- the player's board is recorded in that slot and replaces the printed default; picking
+-- it up (or deleting it) brings the printed default back. Stats are recomputed from
+-- base + effective parts.
+--
+--   ShipState[color] = { faction = "...", ships = { interceptor = <ship>, ... } }
+--   <ship> = { name, base = {...}, cells = { default per cell }, placed = { [cell] = part },
+--              muon = part or nil }          part = { name = "Plasma Cannon", guid = "abc123" }
+--
+-- Not saved: on load it is rebuilt from PlayerState and the tiles on the boards.
+-- Read it through ShipState_stats(color, ship) and ShipState_effectiveParts(color, ship).
+--
+-- Ship miniatures: PlaceShip marks each player ship with memo "Ship <Color> <ship>" (e.g.
+-- "Ship Red interceptor"). Its name is "Red - Interceptor" and its description (the tooltip)
+-- is the ship's current stats, rewritten whenever that ship's blueprint changes.
+--------------------------------------------------------------------------------
+
+ShipState = {}
+ShipState_tiles = {}          -- tile GUID -> { color, ship, cell } (cell = "muon" for the Muon Source spot)
+
+local SHIP_SNAP_RADIUS = 0.09   -- board-local units; blueprint slots are 0.23 apart
+local restoring = false         -- ShipState_restore updates every tooltip once at the end
+
+local function copy(value)
+  if type(value) ~= "table" then return value end
+  local result = {}
+  for k, v in pairs(value) do result[k] = copy(v) end
+  return result
+end
+
+local function hasTag(tags, wanted)
+  for _, tag in ipairs(tags or {}) do
+    if tag == wanted then return true end
+  end
+  return false
+end
+
+-- which ship and cell a snap point index belongs to (nil if not a blueprint snap point)
+local function shipForSnap(index)
+  for _, ship in ipairs(SHIP_TYPES) do
+    local range = SHIP_SNAPS[ship]
+    if index >= range.first and index < range.first + range.cells then
+      return ship, index - range.first + 1
+    end
+    if index == range.muon then return ship, "muon" end
+  end
+  return nil
+end
+
+-- the ship part a Discovery tile is, from its texture (nil if it isn't a ship part)
+local function discoveryPart(obj)
+  if obj.getName() ~= "Discovery" then return nil end
+  local custom = obj.getCustomObject()
+  return custom and DISCOVERY_PARTS[custom.diffuse] or nil
+end
+
+-- part name a tile stands for in a cell; Muon Source only on the Muon Source spot, and nothing else there
+local function partName(obj, cell)
+  local name = obj.hasTag("ShipPart") and obj.getName() or discoveryPart(obj)
+  if name == nil then return nil end
+  if (cell == "muon") ~= (name == "Muon Source") then return nil end
+  return name
+end
+
+local function isShipTile(obj)
+  return obj.hasTag("ShipPart") or discoveryPart(obj) ~= nil
+end
+
+local function shipLabel(color, ship)
+  local state = ShipState[color]
+  return string.format("%s %s", color, state.ships[ship].name)
+end
+
+local function cellText(name)
+  if name == false or name == nil then return "empty" end
+  return name
+end
+
+--------------------------------------------------------------------------------
+-- setup
+
+-- copy the race's reference blueprints to the player (called by PlayerSetup and on load)
+function ShipState_init(color, faction)
+  local blueprints = SHIP_BLUEPRINTS[faction]
+  if blueprints == nil then
+    ShipState[color] = nil
+    return false
+  end
+  local state = { faction = faction, ships = {} }
+  for _, ship in ipairs(SHIP_TYPES) do
+    local blueprint = blueprints[ship]
+    if blueprint ~= nil then
+      state.ships[ship] = { name = blueprint.name, base = copy(blueprint.base),
+                            cells = copy(blueprint.cells), placed = {}, muon = nil }
+    end
+  end
+  ShipState[color] = state
+  if not restoring then ShipState_updateTooltips(color) end
+  return true
+end
+
+-- rebuild everything from PlayerState and the tiles lying on the boards (after a load)
+function ShipState_restore()
+  ShipState = {}
+  ShipState_tiles = {}
+  restoring = true
+  for color, entry in pairs(PlayerState) do
+    ShipState_init(color, entry.faction)
+  end
+  for _, obj in ipairs(getAllObjects()) do
+    if isShipTile(obj) then
+      ShipState_place(obj, true)
+    end
+  end
+  restoring = false
+  ShipState_markOldShips()
+  ShipState_updateTooltips()
+end
+
+--------------------------------------------------------------------------------
+-- slots
+
+-- the player color, ship and cell under an object, or nil
+function ShipState_slotAt(obj)
+  local position = obj.getPosition()
+  for color, _ in pairs(ShipState) do
+    local board = PlayerState_board(color)
+    if board ~= nil then
+      local here = board.positionToLocal(position)
+      for index, snap in ipairs(board.getSnapPoints()) do
+        local ship, cell = shipForSnap(index)
+        if ship ~= nil and ShipState[color].ships[ship] ~= nil and not hasTag(snap.tags, "Unused") then
+          local dx, dz = here.x - snap.position.x, here.z - snap.position.z
+          if dx * dx + dz * dz <= SHIP_SNAP_RADIUS * SHIP_SNAP_RADIUS then
+            return color, ship, cell
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+-- record a tile in the slot it lies on; returns true if it was recorded
+function ShipState_place(obj, quiet)
+  ShipState_remove(obj, true)
+  local color, ship, cell = ShipState_slotAt(obj)
+  if color == nil then return false end
+  local name = partName(obj, cell)
+  if name == nil then return false end
+  if SHIP_PARTS[name] == nil then
+    printToAll("Ship state: unknown ship part '" .. name .. "'.", {1, 0.4, 0.4})
+    return false
+  end
+
+  local state = ShipState[color].ships[ship]
+  local occupied = (cell == "muon") and state.muon or state.placed[cell]
+  if occupied ~= nil then
+    if not quiet then
+      broadcastToColor(shipLabel(color, ship) .. ": that slot already has " .. occupied.name
+                       .. ". Stacked tiles are not counted.", color, {1, 0.4, 0.4})
+    end
+    return false
+  end
+
+  local part = { name = name, guid = obj.getGUID() }
+  if cell == "muon" then state.muon = part else state.placed[cell] = part end
+  ShipState_tiles[part.guid] = { color = color, ship = ship, cell = cell }
+  if not restoring then ShipState_updateTooltips(color, ship) end
+  if not quiet then
+    local was = (cell == "muon") and "" or (" (was " .. cellText(state.cells[cell]) .. ")")
+    printToColor(shipLabel(color, ship) .. ": " .. name .. was .. ". " .. ShipState_summary(color, ship),
+                 color, {0.7, 0.9, 1})
+  end
+  return true
+end
+
+-- forget a tile; the slot goes back to its printed default
+function ShipState_remove(obj, quiet)
+  local guid = obj.getGUID()
+  local where = ShipState_tiles[guid]
+  if where == nil then return false end
+  ShipState_tiles[guid] = nil
+  local player = ShipState[where.color]
+  if player == nil or player.ships[where.ship] == nil then return false end
+  local state = player.ships[where.ship]
+  local removed
+  if where.cell == "muon" then
+    removed = state.muon
+    state.muon = nil
+  else
+    removed = state.placed[where.cell]
+    state.placed[where.cell] = nil
+  end
+  if not restoring then ShipState_updateTooltips(where.color, where.ship) end
+  if not quiet and removed ~= nil then  -- printed default comes back by itself (placed[cell] is gone)
+    local back = (where.cell == "muon") and "" or (" (back to " .. cellText(state.cells[where.cell]) .. ")")
+    printToColor(shipLabel(where.color, where.ship) .. ": removed " .. removed.name .. back .. ". "
+                 .. ShipState_summary(where.color, where.ship), where.color, {0.7, 0.9, 1})
+  end
+  return true
+end
+
+--------------------------------------------------------------------------------
+-- stats
+
+-- parts that count now: placed tile, else printed default, per cell; then the Muon Source
+function ShipState_effectiveParts(color, ship)
+  local player = ShipState[color]
+  if player == nil or player.ships[ship] == nil then return nil end
+  local state = player.ships[ship]
+  local parts = {}
+  for cell, default in ipairs(state.cells) do
+    local placed = state.placed[cell]
+    if placed ~= nil then
+      table.insert(parts, placed.name)
+    elseif default ~= false and default ~= NO_SLOT then
+      table.insert(parts, default)
+    end
+  end
+  if state.muon ~= nil then table.insert(parts, state.muon.name) end
+  return parts
+end
+
+local function addDice(list, dice)
+  for _, die in ipairs(dice or {}) do
+    local found = nil
+    for _, existing in ipairs(list) do
+      if existing.color == die.color then found = existing end
+    end
+    if found then
+      found.count = found.count + die.count
+    else
+      table.insert(list, { color = die.color, count = die.count, damage = die.damage, rift = die.rift })
+    end
+  end
+end
+
+-- { initiative, energy, energyProduced, energyUsed, computer, shield, hull, movement,
+--   cannons = { {color, count, damage} }, missiles = {...}, parts = {...}, warnings = {...} }
+function ShipState_stats(color, ship)
+  local parts = ShipState_effectiveParts(color, ship)
+  if parts == nil then return nil end
+  local state = ShipState[color].ships[ship]
+  local base = state.base
+  local stats = {
+    initiative = base.initiative or 0, computer = base.computer or 0, shield = base.shield or 0,
+    hull = base.hull or 0, movement = 0, energyProduced = 0, energyUsed = 0,
+    cannons = {}, missiles = {}, parts = parts, warnings = {},
+  }
+  local baseEnergy = base.energy or 0
+  if baseEnergy > 0 then stats.energyProduced = baseEnergy else stats.energyUsed = -baseEnergy end
+
+  for _, name in ipairs(parts) do
+    local part = SHIP_PARTS[name] or {}
+    stats.initiative = stats.initiative + (part.initiative or 0)
+    stats.computer = stats.computer + (part.computer or 0)
+    stats.shield = stats.shield + (part.shield or 0)
+    stats.hull = stats.hull + (part.hull or 0)
+    stats.movement = stats.movement + (part.movement or 0)
+    if part.jump then stats.jump = true end
+    if part.regenerate then stats.regenerate = true end
+    local energy = part.energy or 0
+    if energy > 0 then
+      stats.energyProduced = stats.energyProduced + energy
+    else
+      stats.energyUsed = stats.energyUsed - energy
+    end
+    addDice(stats.cannons, part.cannons)
+    addDice(stats.missiles, part.missiles)
+  end
+  stats.energy = stats.energyProduced - stats.energyUsed
+
+  if stats.energy < 0 then
+    table.insert(stats.warnings, string.format("uses %d more energy than it has", -stats.energy))
+  end
+  if ship == "starbase" and (stats.movement > 0 or stats.jump) then
+    table.insert(stats.warnings, state.name .. "s can't have drives")
+  end
+  if ship ~= "starbase" and stats.movement == 0 and not stats.jump then
+    table.insert(stats.warnings, "has no drive")
+  end
+  return stats
+end
+
+local function diceText(list)
+  local pieces = {}
+  for _, die in ipairs(list) do
+    table.insert(pieces, string.format("%d %s", die.count, die.color))
+  end
+  return table.concat(pieces, " + ")
+end
+
+-- one line, e.g. "Init 2, cannons 1 yellow, computer +1, shield 0, hull 1, move 1, energy 1 left"
+function ShipState_summary(color, ship)
+  local stats = ShipState_stats(color, ship)
+  if stats == nil then return "" end
+  local pieces = { "Init " .. stats.initiative }
+  if #stats.missiles > 0 then table.insert(pieces, "missiles " .. diceText(stats.missiles)) end
+  if #stats.cannons > 0 then table.insert(pieces, "cannons " .. diceText(stats.cannons)) end
+  table.insert(pieces, "computer +" .. stats.computer)
+  table.insert(pieces, "shield " .. stats.shield)
+  table.insert(pieces, "hull " .. stats.hull)
+  if ship ~= "starbase" then table.insert(pieces, "move " .. stats.movement) end
+  table.insert(pieces, string.format("energy %d left", stats.energy))
+  local text = table.concat(pieces, ", ")
+  if #stats.warnings > 0 then text = text .. " (" .. table.concat(stats.warnings, "; ") .. ")" end
+  return text
+end
+
+-- every ship of a color, for the "Show my ships" menu item
+function ShipState_report(color)
+  local player = ShipState[color]
+  if player == nil then
+    printToColor("Ship state: " .. color .. " has no race with ship blueprints.", color, {1, 0.4, 0.4})
+    return
+  end
+  printToColor(color .. " (" .. player.faction .. ") ships:", color, {0.7, 0.9, 1})
+  for _, ship in ipairs(SHIP_TYPES) do
+    if player.ships[ship] ~= nil then
+      printToColor("  " .. player.ships[ship].name .. ": " .. ShipState_summary(color, ship), color, {0.7, 0.9, 1})
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- ship miniatures: name "Red - Interceptor", description = current stats (the tooltip)
+
+local SHIP_MEMO = "^Ship (%a+) (%a+)$"
+
+-- the color and ship type a miniature belongs to, or nil
+function ShipState_shipOf(obj)
+  local color, ship = string.match(obj.memo or "", SHIP_MEMO)
+  if color == nil or SHIP_SNAPS[ship] == nil then return nil end
+  return color, ship
+end
+
+local function shipName(color, ship)
+  local player = ShipState[color]
+  if player ~= nil and player.ships[ship] ~= nil then return player.ships[ship].name end
+  return string.upper(string.sub(ship, 1, 1)) .. string.sub(ship, 2)
+end
+
+-- tooltip text: one fact per line
+function ShipState_tooltip(color, ship)
+  local stats = ShipState_stats(color, ship)
+  if stats == nil then return "" end
+  local function dice(list)
+    local pieces = {}
+    for _, die in ipairs(list) do
+      local hit = die.rift and "rift" or (die.damage .. " dmg")
+      table.insert(pieces, string.format("%d %s (%s)", die.count, die.color, hit))
+    end
+    return table.concat(pieces, ", ")
+  end
+  local lines = { "Initiative " .. stats.initiative }
+  if #stats.missiles > 0 then table.insert(lines, "Missiles: " .. dice(stats.missiles)) end
+  if #stats.cannons > 0 then table.insert(lines, "Cannons: " .. dice(stats.cannons)) end
+  table.insert(lines, string.format("Computer +%d   Shield %d   Hull %d", stats.computer, stats.shield, stats.hull))
+  local energy = string.format("Energy %d/%d used", stats.energyUsed, stats.energyProduced)
+  if ship ~= "starbase" then
+    table.insert(lines, (stats.jump and "Jump drive" or ("Movement " .. stats.movement)) .. "   " .. energy)
+  else
+    table.insert(lines, energy)
+  end
+  if stats.regenerate then table.insert(lines, "Repairs 1 damage each round") end
+  for _, warning in ipairs(stats.warnings) do
+    table.insert(lines, "[ff6666]Warning: " .. warning .. "[-]")
+  end
+  return table.concat(lines, "\n")
+end
+
+-- mark a new player ship miniature (called by PlaceShip); other types (shrines, ...) are left alone
+function ShipState_markShip(obj, ship, color)
+  if SHIP_SNAPS[ship] == nil then return end
+  obj.memo = "Ship " .. color .. " " .. ship
+  obj.setName(color .. " - " .. shipName(color, ship))
+  obj.setDescription(ShipState_tooltip(color, ship))
+end
+
+-- saves from before the memo: ships named "Interceptor" etc. with their color in the description
+function ShipState_markOldShips()
+  local byName = {}
+  for _, ship in ipairs(SHIP_TYPES) do byName[shipName(nil, ship)] = ship end
+  for _, obj in ipairs(getAllObjects()) do
+    local ship = byName[obj.getName()]
+    if ship ~= nil and ShipState_shipOf(obj) == nil and PlayerState[obj.getDescription()] ~= nil then
+      ShipState_markShip(obj, ship, obj.getDescription())
+    end
+  end
+end
+
+-- rewrite the tooltips of a color's ships of one type (all types if ship is nil; all colors if color is nil)
+function ShipState_updateTooltips(color, ship)
+  local texts = {}
+  for _, obj in ipairs(getAllObjects()) do
+    local c, s = ShipState_shipOf(obj)
+    if c ~= nil and (color == nil or c == color) and (ship == nil or s == ship) then
+      local key = c .. " " .. s
+      if texts[key] == nil then texts[key] = { c .. " - " .. shipName(c, s), ShipState_tooltip(c, s) } end
+      if obj.getName() ~= texts[key][1] then obj.setName(texts[key][1]) end
+      if obj.getDescription() ~= texts[key][2] then obj.setDescription(texts[key][2]) end
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- events (called from Global's onObjectDrop / onObjectPickUp / onObjectDestroy)
+
+function ShipState_onDrop(obj)
+  if not isShipTile(obj) then return end
+  -- wait for the tile to settle on its snap point
+  Wait.condition(function() if obj ~= nil and not obj.isDestroyed() then ShipState_place(obj) end end,
+                 function() return obj == nil or obj.isDestroyed() or obj.resting end, 3,
+                 function() if obj ~= nil and not obj.isDestroyed() then ShipState_place(obj) end end)
+end
+
+function ShipState_onPickUp(obj)
+  if isShipTile(obj) then ShipState_remove(obj) end
+end
+
+function ShipState_onDestroy(obj)
+  if isShipTile(obj) then ShipState_remove(obj, true) end
+end

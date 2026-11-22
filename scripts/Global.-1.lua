@@ -292,6 +292,9 @@ function onLoad(saveData)
     -- factions can be selected before Setup too, so restore them whatever the round
     PlayerState_restore(saved and saved.PlayerState)
     settings.PlayerState = nil
+    -- ship state isn't saved: rebuild it from the races and the tiles on the boards
+    Wait.time(ShipState_restore, 1)
+    addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
 
     updateGameStateBasedOnSettings()
     shuffleEverything()
@@ -859,6 +862,7 @@ function PlayerSetup(parameters)
   end
 
   PlayerState_record(PlayerColor, Faction.Name, boardGUID)
+  ShipState_init(PlayerColor, Faction.Name)
   return true
 end
 
@@ -984,6 +988,7 @@ function PlaceShip(ShipType, Position, Rotation, Color)
 
   entity.setColorTint(colorRGB)
   entity.setDescription(Color)
+  ShipState_markShip(entity, ShipType, Color)
   entity.setRotation(Rotation)
   entity.setPosition(Position)
   entity.setLock(false)
@@ -1456,6 +1461,7 @@ end
 
 -- Stop players from accidentally taking a stack of techs --
 function onObjectPickUp(player, obj)
+    ShipState_onPickUp(obj)
     if obj.tag == "Chip" and obj.getQuantity() > 1 then
         if string.find(obj.getName(), "Tech %-") != nil then
             obj.drop()
@@ -1487,6 +1493,11 @@ function onObjectDrop(_, obj)
     end
     watchSector(obj)
     stopSectorWatchUnder(obj)
+    ShipState_onDrop(obj)
+end
+
+function onObjectDestroy(obj)
+    ShipState_onDestroy(obj)
 end
 
 
@@ -2499,3 +2510,10 @@ function PlayerState_board(color)
   if entry == nil or entry.boardGUID == nil then return nil end
   return getObjectFromGUID(entry.boardGUID)
 end
+
+
+--------------------------------------------------------------------------------
+-- Ship data and ship state (files in scripts/include/, see tools/tts_scripts.py)
+--------------------------------------------------------------------------------
+#include ShipData
+#include ShipState

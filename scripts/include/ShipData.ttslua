@@ -1,0 +1,190 @@
+--------------------------------------------------------------------------------
+-- Ship data: what every ship part does, and each race's printed ship blueprints.
+-- Reference data only; ShipState copies a race's blueprints to the player who picks it.
+--
+-- Read from the part tiles, Discovery tiles and player board images in the mod.
+--------------------------------------------------------------------------------
+
+-- Part stats. energy: + produced, - used. shield is the size of the shield (a printed
+-- "-1" box is shield = 1). Dice: count dice of a colour, each doing `damage` on a hit.
+-- Missiles fire once, before cannons. Rift dice (pink) have their own damage rules.
+SHIP_PARTS = {
+  -- cannons
+  ["Ion Cannon"]        = { energy = -1, cannons  = { { color = "yellow", count = 1, damage = 1 } } },
+  ["Plasma Cannon"]     = { energy = -2, cannons  = { { color = "orange", count = 1, damage = 2 } } },
+  ["Soliton Cannon"]    = { energy = -3, cannons  = { { color = "blue",   count = 1, damage = 3 } } },
+  ["Antimatter Cannon"] = { energy = -4, cannons  = { { color = "red",    count = 1, damage = 4 } } },
+  ["Rift Cannon"]       = { energy = -2, cannons  = { { color = "pink",   count = 1, rift = true } } },
+  ["Orbital Ion Turret"] = { energy = -1, cannons = { { color = "yellow", count = 2, damage = 1 } } },  -- printed on the Exiles Orbital
+  -- missiles
+  ["Flux Missile"]      = { initiative = 1, missiles = { { color = "yellow", count = 2, damage = 1 } } },
+  ["Plasma Missile"]    = { energy = -1,    missiles = { { color = "orange", count = 2, damage = 2 } } },
+  -- computers
+  ["Electron Computer"] = { computer = 1 },
+  ["Positron Computer"] = { computer = 2, energy = -1 },
+  ["Gluon Computer"]    = { computer = 3, energy = -2 },
+  -- hulls
+  ["Hull"]              = { hull = 1 },
+  ["Improved Hull"]     = { hull = 2 },
+  ["Conifold Field"]    = { hull = 3, energy = -2 },
+  ["Sentient Hull"]     = { hull = 1, computer = 1 },
+  -- shields
+  ["Gauss Shield"]      = { shield = 1 },
+  ["Phase Shield"]      = { shield = 2, energy = -1 },
+  ["Absorption Shield"] = { shield = 1, energy = 4 },
+  -- drives
+  ["Nuclear Drive"]     = { movement = 1, initiative = 1, energy = -1 },
+  ["Fusion Drive"]      = { movement = 2, initiative = 2, energy = -2 },
+  ["Tachyon Drive"]     = { movement = 3, initiative = 3, energy = -3 },
+  ["Transition Drive"]  = { movement = 3 },
+  -- energy sources
+  ["Nuclear Source"]    = { energy = 3 },
+  ["Fusion Source"]     = { energy = 6 },
+  ["Tachyon Source"]    = { energy = 9 },
+  ["Zero-Point Source"] = { energy = 12 },
+
+  -- ancient technology: Discovery tiles (ancient = true). Muon Source goes on the Muon
+  -- Source spot outside the blueprint; the others go in normal slots.
+  ["Muon Source"]        = { ancient = true, energy = 2, initiative = 1 },
+  ["Ion Disruptor"]      = { ancient = true, initiative = 3, cannons = { { color = "yellow", count = 1, damage = 1 } } },
+  ["Ion Turret"]         = { ancient = true, cannons = { { color = "yellow", count = 2, damage = 1 } } },
+  ["Plasma Turret"]      = { ancient = true, energy = -3, cannons = { { color = "orange", count = 2, damage = 2 } } },
+  ["Soliton Charger"]    = { ancient = true, energy = -1, cannons = { { color = "blue", count = 1, damage = 3 } } },
+  ["Rift Conductor"]     = { ancient = true, energy = -1, hull = 1, cannons = { { color = "pink", count = 1, rift = true } } },
+  ["Ion Missile"]        = { ancient = true, missiles = { { color = "yellow", count = 3, damage = 1 } } },
+  ["Soliton Missile"]    = { ancient = true, initiative = 1, missiles = { { color = "blue", count = 1, damage = 3 } } },
+  ["Antimatter Missile"] = { ancient = true, missiles = { { color = "red", count = 1, damage = 4 } } },
+  ["Axion Computer"]     = { ancient = true, initiative = 1, computer = 2 },
+  ["Shard Hull"]         = { ancient = true, hull = 3 },
+  ["Inversion Shield"]   = { ancient = true, shield = 2, energy = 2 },
+  ["Flux Shield"]        = { ancient = true, initiative = 1, shield = 3, energy = -2 },
+  ["Morph Shield"]       = { ancient = true, initiative = 1, shield = 1, regenerate = true },  -- repairs damage
+  ["Nonlinear Drive"]    = { ancient = true, movement = 2, energy = 2 },
+  ["Conformal Drive"]    = { ancient = true, movement = 4, initiative = 2, energy = -2 },
+  ["Jump Drive"]         = { ancient = true, jump = true, energy = -2 },  -- moves by jumping (own rules)
+  ["Hypergrid Source"]   = { ancient = true, energy = 11 },
+}
+
+-- Discovery tiles are all named "Discovery" in the mod; tell them apart by their texture.
+-- Texture (CustomMesh DiffuseURL) -> ship part. Discoveries that aren't ship parts aren't listed.
+DISCOVERY_PARTS = {
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135688285/934A681A7F6FB1BEDE48CDED1D6A213C6E9B218F/"] = "Rift Conductor",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135696421/A4C7DD41A7192314B08F705062551DCB4E9A3F39/"] = "Nonlinear Drive",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135691425/8EF250A6707B2FDCE4783FA5BC2D3734C8112916/"] = "Ion Disruptor",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135676045/AFF7C4D57C038CBF493B0E3061DFA344C6586667/"] = "Jump Drive",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135678677/D61B38DE17EF14D170C8C6C034544B0E51EF67EF/"] = "Soliton Charger",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135692773/66E98F590A9938406BC56A7360C1EB2A543ABFD0/"] = "Inversion Shield",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135684428/2A628049D6B4D40DDDECD6261737B11F84CEA3D2/"] = "Morph Shield",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135686872/6E6AC643C401D8B7857CF9A32D5B8110139838AF/"] = "Ion Turret",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135683299/84E15FF9C377226A4754807D1605D21915638638/"] = "Hypergrid Source",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135682721/4FDF34B11332B69A8E5C15551DB3922B6705B886/"] = "Shard Hull",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135693593/2C5B8FF5B58921F24FAB3FC266FB7305E1393B64/"] = "Conformal Drive",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135692138/5ED91AD625B7BA35312E29F5C9644D610EA4E637/"] = "Antimatter Missile",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135679936/152442807A774E70273596EA8CA894957D278F38/"] = "Flux Shield",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135675338/09599081D9AA44FA1131916A7F661FB1B60CF36F/"] = "Plasma Turret",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135687648/2A2B955CFAB9313C0DAA6904546B072A486917FF/"] = "Muon Source",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135685775/41CC6A743F1E7F215C093D1561751406E02EE2A3/"] = "Axion Computer",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135689701/CE7ADC6E5AE4C5A019D6B0F83402DADF0E83DBB1/"] = "Soliton Missile",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135690739/C34084A2AE809E7C5F165079C870FEB7F2CA3094/"] = "Ion Missile",
+}
+
+-- Ships and their snap point ranges on a player board (see CLAUDE.md, "Snap point convention").
+SHIP_TYPES = { "interceptor", "cruiser", "dreadnought", "starbase" }
+SHIP_SNAPS = {
+  interceptor = { first = 7,  cells = 4, muon = 11 },
+  cruiser     = { first = 12, cells = 6, muon = 18 },
+  dreadnought = { first = 19, cells = 8, muon = 27 },
+  starbase    = { first = 28, cells = 5, muon = 33 },
+}
+
+-- In a blueprint's cells: false = an empty slot, NO_SLOT = the race has no slot there.
+NO_SLOT = "NO_SLOT"
+
+-- Cells in snap point order: column by column, top to bottom, as printed on a standard board.
+--   interceptor: left, middle top, middle bottom, right
+--   cruiser:     left top, left bottom, middle top, middle bottom, right top, right bottom
+--   dreadnought: four columns of two
+--   starbase:    left top, left bottom, middle, right top, right bottom
+-- base: printed values outside the slots (initiative chevrons, energy, bonus boxes).
+local STANDARD = {
+  interceptor = { name = "Interceptor", base = { initiative = 2 },
+                  cells = { "Nuclear Source", "Ion Cannon", "Nuclear Drive", false } },
+  cruiser     = { name = "Cruiser", base = { initiative = 1 },
+                  cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull", false, "Nuclear Drive" } },
+  dreadnought = { name = "Dreadnought", base = {},
+                  cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull",
+                            "Ion Cannon", "Hull", false, "Nuclear Drive" } },
+  starbase    = { name = "Starbase", base = { initiative = 4, energy = 3 },
+                  cells = { "Electron Computer", "Hull", false, "Ion Cannon", "Hull" } },
+}
+
+SHIP_BLUEPRINTS = {
+  ["Terran Directorate"]   = STANDARD,
+  ["Terran Federation"]    = STANDARD,
+  ["Terran Union"]         = STANDARD,
+  ["Terran Republic"]      = STANDARD,
+  ["Terran Conglomerate"]  = STANDARD,
+  ["Terran Alliance"]      = STANDARD,
+  ["Descendants of Draco"] = STANDARD,
+  ["Hydran Progress"]      = STANDARD,
+  ["Mechanema"]            = STANDARD,
+  ["Wardens of Magellan"]  = STANDARD,
+  ["Enlightened of Lyra"]  = STANDARD,
+
+  ["Eridani Empire"] = {
+    interceptor = { name = "Interceptor", base = { initiative = 2, energy = 1 },
+                    cells = { "Nuclear Source", "Ion Cannon", "Nuclear Drive", false } },
+    cruiser     = { name = "Cruiser", base = { initiative = 1, energy = 1 },
+                    cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull", false, "Nuclear Drive" } },
+    dreadnought = { name = "Dreadnought", base = { energy = 1 },
+                    cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull",
+                              "Ion Cannon", "Hull", false, "Nuclear Drive" } },
+    starbase    = STANDARD.starbase,
+  },
+
+  ["Orion Hegemony"] = {
+    interceptor = { name = "Interceptor", base = { initiative = 3, energy = 1 },
+                    cells = { "Nuclear Source", "Ion Cannon", "Nuclear Drive", "Gauss Shield" } },
+    cruiser     = { name = "Cruiser", base = { initiative = 2, energy = 2 },
+                    cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull", "Gauss Shield", "Nuclear Drive" } },
+    dreadnought = { name = "Dreadnought", base = { initiative = 1, energy = 3 },
+                    cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull",
+                              "Ion Cannon", "Hull", "Gauss Shield", "Nuclear Drive" } },
+    starbase    = { name = "Starbase", base = { initiative = 5, energy = 3 },
+                    cells = { "Electron Computer", "Hull", "Ion Cannon", "Gauss Shield", "Hull" } },
+  },
+
+  ["Planta"] = {  -- printed "+1 computer / energy" boxes where other races have a slot
+    interceptor = { name = "Interceptor", base = { computer = 1, energy = 2 },
+                    cells = { "Nuclear Source", "Ion Cannon", NO_SLOT, "Nuclear Drive" } },
+    cruiser     = { name = "Cruiser", base = { computer = 1, energy = 2 },
+                    cells = { "Nuclear Source", NO_SLOT, "Ion Cannon", "Hull", false, "Nuclear Drive" } },
+    dreadnought = { name = "Dreadnought", base = { computer = 1, energy = 2 },
+                    cells = { "Nuclear Source", NO_SLOT, "Ion Cannon", "Hull",
+                              "Ion Cannon", "Hull", false, "Nuclear Drive" } },
+    starbase    = { name = "Starbase", base = { initiative = 2, computer = 1, energy = 5 },
+                    cells = { "Electron Computer", NO_SLOT, "Ion Cannon", "Hull", "Hull" } },
+  },
+
+  ["Rho Indi Syndicate"] = {  -- printed "-1" boxes: +1 shield; no Dreadnought
+    interceptor = { name = "Interceptor", base = { initiative = 3, shield = 1 },
+                    cells = { "Nuclear Source", "Ion Cannon", "Nuclear Drive", false } },
+    cruiser     = { name = "Cruiser", base = { initiative = 2, shield = 1 },
+                    cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull", false, "Nuclear Drive" } },
+    starbase    = { name = "Starbase", base = { initiative = 4, energy = 3, shield = 1 },
+                    cells = { "Electron Computer", "Hull", false, "Ion Cannon", "Hull" } },
+  },
+
+  ["The Exiles"] = {  -- Electron Computers where others have empty slots; Orbital instead of Starbase
+    interceptor = { name = "Interceptor", base = { initiative = 2 },
+                    cells = { "Nuclear Source", "Ion Cannon", "Nuclear Drive", "Electron Computer" } },
+    cruiser     = { name = "Cruiser", base = { initiative = 1 },
+                    cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull",
+                              "Electron Computer", "Nuclear Drive" } },
+    dreadnought = { name = "Dreadnought", base = {},
+                    cells = { "Electron Computer", "Nuclear Source", "Ion Cannon", "Hull",
+                              "Ion Cannon", "Hull", "Electron Computer", "Nuclear Drive" } },
+    starbase    = { name = "Orbital", base = { hull = 2, energy = 4 },
+                    cells = { NO_SLOT, "Hull", "Orbital Ion Turret", "Electron Computer", NO_SLOT } },
+  },
+}

@@ -12,6 +12,15 @@ Usage (run from the repository root):
 Files are matched to objects by GUID, so renaming an object does not break anything.
 Only the script strings that changed are rewritten; the rest of the mod file stays
 byte-for-byte identical. Deleting a script file clears that object's script.
+
+Includes (same format as the VS Code Tabletop Simulator extension): a Lua script line
+    #include ShipData
+is replaced on build by the contents of scripts/include/ShipData.ttslua, wrapped in marker lines
+    ---- #include ShipData
+    ...file contents...
+    ---- #include ShipData
+Extract does the reverse: it writes the wrapped text back to the include file and leaves the
+#include line in the script. Includes can be nested.
 """
 import argparse
 import json
@@ -28,6 +37,69 @@ FIELDS = {'LuaScript': '.lua', 'XmlUI': '.xml'}
 FIELD_PATTERN = re.compile(r'"(LuaScript|XmlUI)": "')
 FILE_PATTERN = re.compile(r'^(?P<name>.*)\.(?P<guid>-1|[0-9a-fA-F]{6})\.(?P<ext>lua|xml)$')
 GLOBAL_GUID = '-1'
+
+INCLUDE_DIR = 'include'
+INCLUDE_EXT = '.ttslua'
+INCLUDE_LINE = re.compile(r'^#include ([A-Za-z0-9_./-]+)[ \t]*$', re.M)
+INCLUDE_MARKER = '---- #include '
+
+
+def include_path(directory, name):
+    return os.path.join(directory, INCLUDE_DIR, name + INCLUDE_EXT)
+
+
+def expand_includes(text, directory, used, depth=0):
+    """Replace each '#include name' line with the wrapped contents of the include file."""
+    if depth > 10:
+        sys.exit('Includes nested more than 10 deep (an include including itself?)')
+
+    def replace(match):
+        name = match.group(1)
+        path = include_path(directory, name)
+        if not os.path.isfile(path):
+            sys.exit('#include %s: no file %s' % (name, os.path.relpath(path, ROOT)))
+        used.add(name)
+        body = expand_includes(read_text(path), directory, used, depth + 1)
+        marker = INCLUDE_MARKER + name
+        return '%s\n%s\n%s' % (marker, body, marker)
+
+    return INCLUDE_LINE.sub(replace, text)
+
+
+def collapse_includes(text, found):
+    """Reverse of expand_includes: put wrapped blocks back as '#include name'; collect their text."""
+    start_pattern = re.compile(r'^' + re.escape(INCLUDE_MARKER) + r'([A-Za-z0-9_./-]+)[ \t]*\n', re.M)
+    out = []
+    position = 0
+    while True:
+        match = start_pattern.search(text, position)
+        if match is None:
+            out.append(text[position:])
+            return ''.join(out)
+        name = match.group(1)
+        end_marker = '\n' + INCLUDE_MARKER + name
+        # the matching end marker: skip over nested blocks of the same name
+        depth, search = 1, match.end()
+        while True:
+            next_start = start_pattern.search(text, search)
+            end = text.find(end_marker, search - 1)
+            if end == -1:
+                sys.exit('#include %s: start marker without an end marker' % name)
+            if next_start is not None and next_start.group(1) == name and next_start.start() < end:
+                depth += 1
+                search = next_start.end()
+                continue
+            depth -= 1
+            if depth == 0:
+                break
+            search = end + len(end_marker)
+        body = collapse_includes(text[match.end():end], found)
+        if name in found and found[name] != body:
+            sys.exit('#include %s appears twice with different contents' % name)
+        found[name] = body
+        out.append(text[position:match.start()])
+        out.append('#include ' + name)
+        position = end + len(end_marker)
 
 
 def read_text(path):
@@ -106,14 +178,24 @@ def extract(mod, directory):
     os.makedirs(directory, exist_ok=True)
     existing = script_files(directory)
     wanted = {}
+    includes = {}
     for entry in find_slots(raw):
         if entry['value'].strip() == '' and entry['guid'] != GLOBAL_GUID:
             continue
         key = entry_key(entry)
         if key in wanted:
             sys.exit('Several objects with GUID %s have scripts; cannot extract them separately.' % entry['guid'])
-        wanted[key] = (file_name(entry), entry['value'])
+        value = entry['value']
+        if entry['field'] == 'LuaScript':
+            value = collapse_includes(value, includes)
+        wanted[key] = (file_name(entry), value)
 
+    for name, body in sorted(includes.items()):
+        path = include_path(directory, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if not os.path.exists(path) or read_text(path) != body:
+            write_text(path, body)
+            print('extracted', os.path.relpath(path, directory))
     for key, path in existing.items():
         if key not in wanted or os.path.basename(path) != wanted[key][0]:
             os.remove(path)
@@ -137,6 +219,7 @@ def compose(mod, directory):
         counts[entry_key(entry)] = counts.get(entry_key(entry), 0) + 1
 
     used = set()
+    used_includes = set()
     changes = []
     pieces = []
     position = 0
@@ -148,6 +231,8 @@ def compose(mod, directory):
                 sys.exit('Several objects in the mod have GUID %s; cannot tell which one %s belongs to.'
                          % (entry['guid'], os.path.basename(path)))
             value = read_text(path)
+            if path.endswith('.lua'):
+                value = expand_includes(value, directory, used_includes)
             used.add(key)
         else:
             value = ''  # no file: the object has no script
@@ -162,6 +247,12 @@ def compose(mod, directory):
     unknown = [os.path.basename(path) for key, path in files.items() if key not in used]
     if unknown:
         sys.exit('No object in the mod matches these files: ' + ', '.join(unknown))
+    include_dir = os.path.join(directory, INCLUDE_DIR)
+    if os.path.isdir(include_dir):
+        unused = sorted(f for f in os.listdir(include_dir)
+                        if f.endswith(INCLUDE_EXT) and f[:-len(INCLUDE_EXT)] not in used_includes)
+        if unused:
+            print('warning: include files not used by any script: ' + ', '.join(unused))
 
     new_raw = ''.join(pieces)
     json.loads(new_raw)  # still valid JSON

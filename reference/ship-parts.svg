@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1710" width="1500" height="1710">
+<rect width="100%" height="100%" fill="#222"/>
+<text x="20" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#fff">Ship parts (25 tiles)</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135754698/270357D0A44D11D4676F49BE7628C40E11A7230B/" x="40" y="70" width="220" height="220"/>
+<text x="150" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Absorption Shield</text>
+<text x="150" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">shield 1 · energy +4</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135753492/762FC7AF3C8EFB9945C53840E58CB830541DBB51/" x="340" y="70" width="220" height="220"/>
+<text x="450" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Antimatter Cannon</text>
+<text x="450" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 red die (4 dmg) · energy -4</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135752801/D737C444CB4FA39EDCDB939C3890FE91D5CC22E1/" x="640" y="70" width="220" height="220"/>
+<text x="750" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Conifold Field</text>
+<text x="750" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">hull 3 · energy -2</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135752278/BC97CD78A231B688D88DC363A13031BB86A95EC7/" x="940" y="70" width="220" height="220"/>
+<text x="1050" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Electron Computer</text>
+<text x="1050" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135754020/34F96AAD2AA16D2F4B1B3A6346B103D9029D2F78/" x="1240" y="70" width="220" height="220"/>
+<text x="1350" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Flux Missile</text>
+<text x="1350" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 yellow missiles (1 dmg) · init</text>
+<text x="1350" y="362" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">+1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135748274/15A5426B74812DF0EF91E34292C8EC7A61704BD3/" x="40" y="400" width="220" height="220"/>
+<text x="150" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Fusion Drive</text>
+<text x="150" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +2 · move 2 · energy -2</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135746056/2DAB93B1CDFC6CBE0C088DD4BDF184EC3E21ED4B/" x="340" y="400" width="220" height="220"/>
+<text x="450" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Fusion Source</text>
+<text x="450" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">energy +6</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135753675/80B50DDC2701884802561589D02F9C26A444F167/" x="640" y="400" width="220" height="220"/>
+<text x="750" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Gauss Shield</text>
+<text x="750" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">shield 1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135752997/9A18ED3F1C1206C1716B6A4D292878E1E86A143C/" x="940" y="400" width="220" height="220"/>
+<text x="1050" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Gluon Computer</text>
+<text x="1050" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +3 · energy -2</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135752117/AFE9DC7F5AC5387DB22CFAF3F02B2C7D7B62F920/" x="1240" y="400" width="220" height="220"/>
+<text x="1350" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Hull</text>
+<text x="1350" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">hull 1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135743359/8F65D492B1E7D8BA9FC4FBFF2628B8056CC139E6/" x="40" y="730" width="220" height="220"/>
+<text x="150" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Improved Hull</text>
+<text x="150" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">hull 2</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135755317/951CEBBAEEAA63D90049D9A73F62CEA3FCC1F282/" x="340" y="730" width="220" height="220"/>
+<text x="450" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ion Cannon</text>
+<text x="450" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 yellow die (1 dmg) · energy -1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135752630/845FEC656748EDBC253AC9AD10D71CE9016ACCB5/" x="640" y="730" width="220" height="220"/>
+<text x="750" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Nuclear Drive</text>
+<text x="750" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +1 · move 1 · energy -1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135752446/83AE027FDD7696BF23B64C24DC040467AACF399B/" x="940" y="730" width="220" height="220"/>
+<text x="1050" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Nuclear Source</text>
+<text x="1050" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">energy +3</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135754858/BF8BF29433BBEDFFFE7DE6803661ED03BB5195B0/" x="1240" y="730" width="220" height="220"/>
+<text x="1350" y="978" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Phase Shield</text>
+<text x="1350" y="1002" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">shield 2 · energy -1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135750280/5AB0D8EB4081567D907D5D227FD75037A050C552/" x="40" y="1060" width="220" height="220"/>
+<text x="150" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Plasma Cannon</text>
+<text x="150" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 orange die (2 dmg) · energy -2</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135751452/75EF7822A87C594EF695420EFB57627B85ED6DA5/" x="340" y="1060" width="220" height="220"/>
+<text x="450" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Plasma Missile</text>
+<text x="450" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 orange missiles (2 dmg) · energy</text>
+<text x="450" y="1352" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">-1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135745540/34569ED4474807B9D5062305EE8F2E97DEA9D07A/" x="640" y="1060" width="220" height="220"/>
+<text x="750" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Positron Computer</text>
+<text x="750" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +2 · energy -1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135755095/6D2F14732FDED6F5CBF0090834354BAE81266001/" x="940" y="1060" width="220" height="220"/>
+<text x="1050" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Rift Cannon</text>
+<text x="1050" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 pink die (rift) · energy -2</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135754524/3305822C0A36AF761DB111D77D186C255D420E0A/" x="1240" y="1060" width="220" height="220"/>
+<text x="1350" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Sentient Hull</text>
+<text x="1350" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +1 · hull 1</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135741408/0243040F923AB1C782E52A712DCF5A01F7FC70B4/" x="40" y="1390" width="220" height="220"/>
+<text x="150" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Soliton Cannon</text>
+<text x="150" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 blue die (3 dmg) · energy -3</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135753328/4D1002BB741D2386A9CF578EF73738767FDAC135/" x="340" y="1390" width="220" height="220"/>
+<text x="450" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Tachyon Drive</text>
+<text x="450" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">init +3 · move 3 · energy -3</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135753171/31C6371C7BBC8A39BC3BA4071D1E572F481622AF/" x="640" y="1390" width="220" height="220"/>
+<text x="750" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Tachyon Source</text>
+<text x="750" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">energy +9</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135754226/A61253FF44B983FD727AD7FCB70055004945250F/" x="940" y="1390" width="220" height="220"/>
+<text x="1050" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Transition Drive</text>
+<text x="1050" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">move 3</text>
+<image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135754366/BBEEED79C383C633C3A38ECEAC7DE63DEF1D5B5A/" x="1240" y="1390" width="220" height="220"/>
+<text x="1350" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Zero-Point Source</text>
+<text x="1350" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">energy +12</text>
+</svg>
