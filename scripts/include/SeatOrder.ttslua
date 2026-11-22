@@ -4,7 +4,7 @@
 -- Optional, enabled with the "Randomize seat order" checkbox in the setup panel.
 -- The seated players are moved to a random permutation of the seats they occupy, by
 -- changing their player colors. When it happens is chosen in the dropdown next to it:
---  "draft": before the Advanced Turn Order draft (without it: before race selection)
+--  "draft": before the turn order draft (without a draft: before race selection)
 --  "race":  before race selection (when "Setup" is pressed, or after the draft)
 --  "after": after race selection. Factions are then picked without setting them up;
 --           once everyone has picked, the seats are randomized and each faction is
@@ -25,7 +25,7 @@ local SEAT_busy = false
 function SEAT_timing()
   if not settings.RandomizeSeats then return nil end
   local timing = settings.SeatTiming or "after"
-  if timing == "draft" and not settings.AdvancedTurnOrder then timing = "race" end
+  if timing == "draft" and not ATO_usesDraft() then timing = "race" end
   return timing
 end
 
@@ -190,16 +190,6 @@ function SEAT_remap(mapping)
   for _, pending in ipairs(settings.SeatPending or {}) do pending.color = map(pending.color) end
 end
 
--- true when every seated player has selected a faction
-function SEAT_allSeatedPicked()
-  local seated = ATO_seatedPlayers()
-  if #seated == 0 then return false end
-  for _, color in ipairs(seated) do
-    if PlayerSelection[color] == nil or PlayerSelection[color] == 'none' then return false end
-  end
-  return true
-end
-
 -- seats randomized after race selection: remember the pick until then
 function SEAT_addPending(color, faction)
   settings.SeatPending = settings.SeatPending or {}
@@ -230,9 +220,8 @@ function SEAT_restore()
   end
 
   -- saved after the seats were randomized but before every faction was set up:
-  -- set up the rest now (with the Advanced Turn Order, ATO_resume does this)
-  if #pending > 0 and settings.SeatsRandomized
-     and not (settings.AdvancedTurnOrder and ATO.phase ~= "off") then
+  -- set up the rest now (during setup, ATO_resume does this)
+  if #pending > 0 and settings.SeatsRandomized and ATO.phase == "off" then
     Wait.time(function() SEAT_placePending(nil) end, 2)
   end
 end

@@ -1,0 +1,37 @@
+--------------------------------------------------------------------------------
+-- Race buttons: only the player picking a race sees them
+--------------------------------------------------------------------------------
+-- Races are picked one player at a time (see TURN ORDER in Global). The "Select <race>"
+-- buttons are hidden from everyone except the player whose turn it is to pick, and from
+-- everyone before and after race selection, and with random races.
+-- Expansion races stay hidden without "Expansion Species".
+-- Hot seat: the shared screen moves to the picking color (the built-in turn, and
+-- ATO_syncHotseat), so it sees the buttons there.
+
+local RaceButtons_ALL_COLORS = {"White", "Red", "Yellow", "Blue", "Green", "Purple",
+  "Orange", "Pink", "Teal", "Brown", "Black", "Grey"}
+-- buttons shown only with "Expansion Species" (Pyxis Unity, Exiles, Rho Indi,
+-- Magellan Warden, Lyra)
+local RaceButtons_EXPANSION = {a064f5 = true, c9e20e = true, ['4663e1'] = true,
+  ['87e4f1'] = true, c37168 = true}
+
+-- the color picking a race by hand now, or nil
+function RaceButtons_picker()
+  if ATO.phase ~= "race" or settings.RandomRaces then return nil end
+  return ATO.raceSlots[ATO.raceIndex] or nil
+end
+
+function RaceButtons_update()
+  local picker = RaceButtons_picker()
+  for _, guid in ipairs(ButtonGUIDs) do
+    local button = getObjectFromGUID(guid)
+    if button ~= nil then
+      local shown = picker ~= nil and (settings.FirstEdition or not RaceButtons_EXPANSION[guid])
+      local hidden = {}
+      for _, color in ipairs(RaceButtons_ALL_COLORS) do
+        if not (shown and color == picker) then table.insert(hidden, color) end
+      end
+      button.setInvisibleTo(hidden)
+    end
+  end
+end

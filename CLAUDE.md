@@ -8,7 +8,9 @@ A fork of the Tabletop Simulator (TTS) Workshop mod *Eclipse: Second Dawn for th
 [Scripted]* (Workshop ID `2348417296`), developed as a personal project by two friends.
 The goal is to add functionality and quality-of-life features for playing Eclipse in TTS.
 
-- Already added: the **Advanced Turn Order** house rule (see README).
+- Already added: turn order options, **Rotating** or **Pass order** with a **Yellow**,
+  **Random** or **Draft** starting player (the old Advanced Turn Order is Pass order +
+  Draft), and race selection in turn (see README).
 - In progress: **combat zone automation**. Take the units in a contested hex, move them
   to a combat area, and pick the right dice for each player to throw. The groundwork is
   **ship state**: knowing which race each player color has and what is on each of their
@@ -106,8 +108,27 @@ https://api.tabletopsimulator.com/
 ### Script files
 
 - `Global.-1.lua` (~2500 lines): setup, rounds, player setup, utilities, the event
-  handlers, and the Advanced Turn Order code (`ATO_*`, near the end of the file). It's
-  being split into components, see "Includes".
+  handlers, and the turn order code, near the end of the file. It's being split into
+  components, see "Includes". Turn order:
+  - `ATO_*` ("TURN ORDER"): the setup dropdowns (`settings.TurnOrder` = `"rotating"` /
+    `"pass"`, `settings.StartingPlayer` = `"yellow"` / `"random"` / `"draft"`), and for
+    both turn orders setup and race selection: `ATO_startSetup` → reveal / draft →
+    `ATO_finishDraft` → race phase (`ATO.phase == "race"`, one color at a time from
+    `ATO.raceSlots`) → `ATO_startPlay`. During the draft and race selection the turn
+    only moves on with a choice or a pick: `onPlayerTurn` undoes "End Turn". Play with the pass order is `ATO.phase == "play"`.
+    `ATO_startMode()` is the effective starting player mode (Draft only with Pass order
+    and without Random races, otherwise Random).
+  - `STO_*` ("ROTATING TURN ORDER"): play with the rotating order (`STO_active()`):
+    passing, the Direction of Play card. The seats are fixed, so clockwise is always
+    Yellow, Red, Green, Blue, Purple, White (`STO_COLOR_ORDER`). That isn't TTS's automatic
+    order, so play uses a custom turn order (`Turns.type = 2`) of the seated colors.
+  - Saves from before the dropdowns have `settings.AdvancedTurnOrder`;
+    `ATO_migrateSettings` turns it into the new settings on load.
+  - Seats randomized after race selection (without Draft): random race pick order,
+    `ATO.orderAfterSeats` is set, and `ATO_startPlay` sets the round 1 order once the
+    seats are randomized: clockwise from the last player to pick.
+  - The starting techs are drawn at Setup (`gameSetup`), or with the house rule
+    `settings.TechAfterRaces` in `ATO_startPlay` once race selection is over.
 - `include/ShipData.ttslua`, `include/ShipState.ttslua`, `include/HexState.ttslua`: ship data, ship
   state and hex state, included in Global.
 - `include/CombatZone.ttslua`: the combat zone area on the left side table (`CombatZone_*`).
@@ -115,12 +136,16 @@ https://api.tabletopsimulator.com/
 - `include/ActionAnnounce.ttslua`: announces actions taken with influence discs (`ActionAnnounce_*`).
 - `include/SeatOrder.ttslua`: the "Randomize seat order" setup option (`SEAT_*`). Global
   calls it from `gameSetup`, `PlayerSetup` (which records picks for later and sets up
-  factions through `placeFaction`), the Advanced Turn Order and the turn order panel.
+  factions through `placeFaction`), the turn order code and the turn order panel.
 - `include/RandomRaces.ttslua`: the "Random races" setup option (`RandomRaces_*`). It gives
   races out through `PlayerSetup`, reading each race button's faction table with
-  `getTable`. Global calls it from `gameSetup`, `PlayerSetup` and the Advanced Turn Order
-  (`ATO_beginDraft` skips the draft, `ATO_advanceRacePick` gives the current race).
-- `Global.-1.xml`: on-screen UI (setup popup, Advanced Turn Order panel).
+  `getTable`. Global calls it from `PlayerSetup` and the turn order code
+  (`ATO_advanceRacePick` gives the current race).
+- `include/RaceButtons.ttslua`: hides the race buttons from everyone except the player
+  picking a race (`RaceButtons_update`, with `setInvisibleTo`). Called when the race pick
+  changes, when race selection ends, and from `updateGameStateBasedOnSettings` (which
+  shows or hides the expansion buttons first).
+- `Global.-1.xml`: on-screen UI (setup popup, turn order panel).
 - `Button <Race>.<guid>.lua`: one per race. Each holds a faction table (`Name`,
   `startingShip`, `numStartingShips`, resources, `Influence`, `Box_GUID`, population
   positions) and, on click, calls `Global.call('PlayerSetup', {PlayerColor, Faction})`.
@@ -172,7 +197,7 @@ the GUID of the object you actually took out rather than hard-coding the one in 
   hand position (`Player[color].getHandTransform()`).
 - **Hot seat:** only the six seat colors work. Seating someone at Orange (no hand zone) or at
   Pink, Teal or Brown (not in `PlayerSelection`) breaks faction setup. The README documents
-  this for players. With the Advanced Turn Order, hot seat picks are made for whoever's turn
+  this for players. Hot seat picks are made for whoever's turn
   it is (`ATO_canPickRace` returns the color to use).
 - **Known issue, no fix yet: hot seat picks player colors before the game file loads.**
   TTS's hot seat mode makes you pick the seat colors before the mod is loaded. So the
@@ -183,10 +208,10 @@ the GUID of the object you actually took out rather than hard-coding the one in 
 - **`PlayerState[color] = { faction, boardGUID }`** (section at the end of Global) is the
   saved color → race record. `PlayerSetup` records it once a faction is set up. `onSave`
   stores it in the save next to `settings` and `ATOState`. `onLoad` restores it whatever the
-  round, because factions can be picked before *Setup*. Read it through
+  round (saves made before race selection moved after *Setup* can have picks from before it). Read it through
   `PlayerState_faction(color)` and `PlayerState_board(color)`.
 - **`PlayerSelection[color] = faction name`** comes from the original mod and is still used
-  by `PlayerSetup` and the Advanced Turn Order code. It isn't saved itself. `PlayerState_restore`
+  by `PlayerSetup` and the turn order code. It isn't saved itself. `PlayerState_restore`
   fills it in again on load. It only has entries for White, Red, Blue, Purple, Green,
   Orange and Yellow. Any other color reads as `nil`, and `PlayerSetup` treats that as
   "already selected".
@@ -488,9 +513,9 @@ Taking it off during their turn gives `<name> canceled action Research`. `<name>
 - The owner of the board or card is the player, whatever the disc's tint. Whether the action is
   allowed isn't checked. Moves outside the owner's turn aren't announced (taken as fixing
   mistakes), and neither are scripted moves (Return Influence), which fire no events.
-- "The owner's turn" needs TTS's built-in turns (`Turns.enable`), which only the Advanced Turn
-  Order switches on. With the standard turn order they're off, so every move is announced
-  (the same rule as `STO_pass`).
+- "The owner's turn" is TTS's built-in turn (`Turns.turn_color`). Both turn orders switch the
+  built-in turns on: setup and the pass order in `ATO_setTurns`, the rotating order in
+  `ATO_startPlay` (and `STO_enableTurns` on load).
 - The slot a disc was picked up from is remembered until it's dropped, so putting it back on
   the same slot announces nothing.
 

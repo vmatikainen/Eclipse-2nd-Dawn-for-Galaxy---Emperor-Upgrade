@@ -6,9 +6,8 @@
 --  - The six Terran races count as one race in the draw. A player who draws it gets
 --    the Terran race of their own color (Purple gets the black one, Terran Alliance).
 --  - Pyxis Unity is never drawn. Expansion races are only drawn with "Expansion Species".
---  - With the Advanced Turn Order there is no draft: the random order revealed after
---    Setup is the round 1 turn order, and races are given out in that order.
---  - Without it, races are given out right after Setup.
+--  - Races are given out in race pick order (the reverse of the round 1 turn order).
+--  - There is no draft: "Draft" as starting player works as "Random".
 -- A race is given out through PlayerSetup, as if the player had clicked its button, so
 -- "Randomize seat order" works the same as with picked races.
 
@@ -102,14 +101,7 @@ function RandomRaces_give(color)
   return false
 end
 
--- without the Advanced Turn Order: give every seated player a race, one at a time
-function RandomRaces_giveAll()
-  for i, color in ipairs(ATO_seatedPlayers()) do
-    Wait.time(function() RandomRaces_give(color) end, 0.5 + (i - 1) * RandomRaces_INTERVAL)
-  end
-end
-
--- with the Advanced Turn Order: give the race of the player whose turn it is to pick
+-- give the race of the player whose turn it is to pick
 function RandomRaces_giveCurrent()
   local color = ATO.raceSlots[ATO.raceIndex]
   Wait.time(function()
