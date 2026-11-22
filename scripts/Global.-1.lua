@@ -258,6 +258,9 @@ end
 function onLoad(saveData)
     RoundMarker = getObjectFromGUID(RoundMarker_GUID)
     TurnDirection = getObjectFromGUID(TurnDirection_GUID)
+    if TurnDirection ~= nil then
+      TurnDirection.addContextMenuItem("Update direction", function() STO_applyDirection() end)
+    end
     TechBag = getObjectFromGUID(TechBag_GUID)
     ReputationBag = getObjectFromGUID(ReputationBag_GUID)
     DiscoveryBag = getObjectFromGUID(DiscoveryBag_GUID)
@@ -359,6 +362,7 @@ function gameSetup()
 
   settings.setupCompleted = true
   updateUI_Visibility()
+  ATO_updateUI()
 
   if not(settings.RiftWeapons) then RemoveRiftExpansion() end
   if (settings.GalacticEvents) then AddGalacticEvents() end
@@ -586,12 +590,11 @@ function nextRound(parameters)
   if (settings.AdvancedTurnOrder and ATO_newRound(round)) then return end
 
   Turns.reverse_order = false
-  if TurnDirection == nil then return 
-  end
-  if (TurnDirection.is_face_down) then
+  if TurnDirection ~= nil and TurnDirection.is_face_down then
     Turns.reverse_order = true
     broadcastToAll("-- Reverse turn order --")
   end
+  STO_newRound()
 end
 
 
@@ -1668,6 +1671,147 @@ function getInvertFactor(object)
 end
 
 
+-- STANDARD TURN ORDER --
+-- Without the Advanced Turn Order, passing is tracked too: a player passes by flipping
+-- their "Actions" card face down. The first player to pass gets the start player tile
+-- and starts the next round, the second gets the "Direction of Play" card and chooses
+-- the direction by flipping it. A small "Passed" list at the top right shows the order.
+
+function STO_active()
+  return settings.setupCompleted and not settings.AdvancedTurnOrder
+end
+
+function STO_pass(color, card, flipper)
+  settings.PassOrder = settings.PassOrder or {}
+  if table.contains(settings.PassOrder, color) then return end
+
+  -- when the built-in turns are used, passing is only allowed during your own turn
+  local current = Turns.turn_color
+  if Turns.enable and current ~= nil and current ~= "" and current ~= color then
+    broadcastToColor("You can only pass during your own turn. It is " .. ATO_name(current) .. "'s turn.",
+      flipper or color, {1, 0.4, 0.4})
+    Wait.time(function()
+      if card ~= nil and card.is_face_down and not table.contains(settings.PassOrder, color) then card.flip() end
+    end, 1)
+    return
+  end
+
+  table.insert(settings.PassOrder, color)
+  local position = #settings.PassOrder
+  if position == 1 then
+    broadcastToAll(ATO_name(color) .. " passes first and takes the start player tile for the next round.", color)
+    placeFirstPlayerTile(color)
+  elseif position == 2 then
+    broadcastToAll(ATO_name(color) .. " passes second and takes the Direction of Play card: flip it to choose the next round's direction.", color)
+    STO_giveDirectionCard(color)
+  else
+    broadcastToAll(string.format("%s passes (#%d).", ATO_name(color), position), color)
+  end
+
+  if position >= #ATO_seatedPlayers() then
+    broadcastToAll("All players have passed. Finish the round and press 'Next Round'.")
+  end
+
+  -- passing ends the turn
+  if Turns.enable and Turns.turn_color == color then
+    local nextColor = Turns.getNextTurnColor()
+    if nextColor ~= nil and nextColor ~= "" and nextColor ~= color then Turns.turn_color = nextColor end
+  end
+  ATO_updateUI()
+end
+
+-- move the Direction of Play card in front of the given player, next to where the
+-- start player tile goes, keeping the side it shows
+function STO_giveDirectionCard(color)
+  if TurnDirection == nil or Player[color] == nil then return end
+  local hand = Player[color].getHandTransform()
+  if hand == nil then return end
+  local position = hand.position
+  local inv = (position.z < 0) and 1 or -1
+  local rotation = TurnDirection.getRotation()
+  TurnDirection.setPositionSmooth(Vector(position.x - 4 * inv, 1.2, position.z + 28 * inv), false, false)
+  TurnDirection.setRotationSmooth({rotation.x, (inv + 1) * 90, rotation.z}, false, false)
+end
+
+-- Direction of Play card, right click: apply the side it shows now to the current round
+-- TTS's automatic turn order follows this color sequence
+local STO_COLOR_ORDER = {"White", "Brown", "Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Pink"}
+
+-- the round's turn order in the normal direction
+function STO_normalOrder()
+  if Turns.type == 2 and Turns.order ~= nil and #Turns.order > 0 then return ATO_copy(Turns.order) end
+  local seated = ATO_seatedPlayers()
+  local order = {}
+  for _, color in ipairs(STO_COLOR_ORDER) do
+    if table.contains(seated, color) then table.insert(order, color) end
+  end
+  return order
+end
+
+function STO_reversed(list)
+  local result = {}
+  for i = #list, 1, -1 do table.insert(result, list[i]) end
+  return result
+end
+
+-- give the turn to a color, and again once TTS has settled after an order change
+-- (TTS picks its own turn a few frames after the order changes)
+function STO_setTurn(color)
+  if color == nil or color == "" then return end
+  Turns.turn_color = color
+  Wait.frames(function()
+    if Turns.turn_color ~= color then Turns.turn_color = color end
+  end, 10)
+end
+
+function STO_applyDirection()
+  if TurnDirection == nil then return end
+  local reverse = TurnDirection.is_face_down
+  local current = Turns.turn_color
+
+  if not Turns.enable or current == nil or current == "" then
+    Turns.reverse_order = reverse
+  else
+    -- Changing Turns.reverse_order mid-turn leaves TTS's "next player" pointer at the
+    -- old position, so the turn jumps to the wrong player. Instead, set an explicit order
+    -- in the chosen direction and give the turn back to the current player.
+    -- The original turn settings are restored at the next round.
+    if settings.STO_Order == nil then
+      settings.STO_Order = STO_normalOrder()
+      settings.STO_TurnType = Turns.type
+    end
+    local order = ATO_copy(settings.STO_Order)
+    if reverse then order = STO_reversed(order) end
+    Turns.type = 2
+    Turns.order = order
+    Turns.reverse_order = false
+    STO_setTurn(current)
+  end
+
+  if reverse then
+    broadcastToAll("-- Direction of play: reverse --")
+  else
+    broadcastToAll("-- Direction of play: normal --")
+  end
+end
+
+-- called by nextRound: the first player to pass starts the new round
+function STO_newRound()
+  -- undo the explicit order set by "Update direction" during the round
+  if settings.STO_Order ~= nil then
+    Turns.type = settings.STO_TurnType or 0
+    if Turns.type == 2 then Turns.order = settings.STO_Order end
+    settings.STO_Order = nil
+    settings.STO_TurnType = nil
+  end
+
+  local first = (settings.PassOrder or {})[1]
+  settings.PassOrder = {}
+  if Turns.enable then STO_setTurn(first or Turns.turn_color) end
+  ATO_updateUI()
+end
+
+
 -- ADVANCED TURN ORDER --
 -- Optional house rule, enabled with the "Advanced Turn Order" checkbox in the setup panel.
 --  1. After "Setup", the seated players are put in a random draft order.
@@ -2108,7 +2252,8 @@ function ATO_pass(color, card, flipper)
 end
 
 function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
-  if not (settings.AdvancedTurnOrder and ATO.phase == "play") then return end
+  local advanced = settings.AdvancedTurnOrder and ATO.phase == "play"
+  if not (advanced or STO_active()) then return end
   if object == nil or object.getName() ~= "Actions" then return end
   if type(flip) ~= "number" or flip == old_flip then return end
 
@@ -2116,7 +2261,8 @@ function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
   if angle < 90 or angle > 270 then return end  -- flipped face up, not a pass
 
   local owner = ATO.actionCards[object.getGUID()] or player_color
-  ATO_pass(owner, object, player_color)
+  if owner == nil then return end
+  if advanced then ATO_pass(owner, object, player_color) else STO_pass(owner, object, player_color) end
 end
 
 function onPlayerTurn(player, previous_player)
@@ -2248,7 +2394,20 @@ function ATO_updateUI()
   -- this small list at the top of the screen shows the order for the next round
   if enabled and ATO.phase == "play" then
     UI.setAttribute("ATO_NextPanel", "active", "true")
+    UI.setAttribute("ATO_NextPanel", "offsetXY", "-180 0")
     UI.setValue("ATO_NextText", "<b>Next round</b>\n" .. ATO_slotLines(ATO.passOrder, #ATO.order))
+  elseif STO_active() then
+    -- standard turn order: who passed, and who gets the start player tile and direction card
+    UI.setAttribute("ATO_NextPanel", "active", "true")
+    -- sit left of the built-in turn indicator when it is shown, else in the corner
+    UI.setAttribute("ATO_NextPanel", "offsetXY", Turns.enable and "-180 0" or "0 0")
+    local passOrder = settings.PassOrder or {}
+    local count = math.max(#passOrder, #ATO_seatedPlayers())
+    UI.setValue("ATO_NextText", "<b>Passed</b>\n" .. ATO_slotLines(passOrder, count, function(color)
+      if color == passOrder[1] then return " (start)" end
+      if color == passOrder[2] then return " (direction)" end
+      return ""
+    end))
   else
     UI.setAttribute("ATO_NextPanel", "active", "false")
   end
