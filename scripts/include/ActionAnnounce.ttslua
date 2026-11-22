@@ -73,12 +73,10 @@ function ActionAnnounce_slotAt(position)
   return nil
 end
 
--- With the built-in turns on (Advanced Turn Order, or turns enabled by hand), only the
--- current player's moves are announced. The standard turn order doesn't use them, so
--- without turns there is no "current player" and every move is announced (the same rule
--- as STO_pass).
+-- Only the current player's moves are announced. Both turn orders keep TTS's built-in
+-- turns on during the game (ATO_setTurns, STO_enableTurns).
 local function announce(slot, verb)
-  if Turns.enable and Turns.turn_color ~= slot.color then return end
+  if Turns.turn_color ~= slot.color then return end
   broadcastToAll(string.format("%s %s action %s", ATO_name(slot.color), verb, slot.action),
                  stringColorToRGB(slot.color))
 end

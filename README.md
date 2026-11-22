@@ -2,7 +2,7 @@
 
 A modified version of the Tabletop Simulator Workshop mod
 *Eclipse: Second Dawn for the Galaxy [Scripted]* (Workshop ID `2348417296`).
-It adds an optional **Advanced Turn Order** house rule (see below).
+It adds turn order options, including the **Pass order** house rule (see below).
 
 ## Repository layout
 
@@ -119,43 +119,68 @@ you made the change in the game, compare your save with a rebuilt mod to see wha
 - Don't edit scripts directly inside the mod file. The next rebuild replaces any script
   whose file differs.
 
-## Advanced Turn Order house rule
+## Turn order and starting player
 
-Turn it on with the **Advanced Turn Order** checkbox under *House Rules* in the setup popup.
+Two dropdowns under *Turn Order* in the setup popup. Hover over their labels for an
+explanation.
 
-1. **Draft:** after *Setup*, players are put in a random draft order. On their turn,
-   each player takes either the best free race pick position or the best free turn order
-   position. They are put in the last free position of the other track at the same time.
-2. **Faction selection:** factions must be selected in race pick order.
-3. **Play:** round 1 follows the drafted turn order. To pass, flip your *Actions* card face
-   down during your own turn. Your turn ends at once and you take the best free turn
-   order position for the next round. Each new round's order is the pass order of the
-   previous round.
+**Turn order**
 
-After *Setup*, the draft order is revealed one player at a time before the first choice.
-The last player in the draft has no real choice, so they get the remaining positions
-automatically.
+- **Rotating** (default): the base game. Play goes clockwise from the start player. Pass
+  by flipping your *Actions* card face down. The first player to pass gets the start
+  player tile and starts the next round. The second gets the *Direction of Play* card:
+  flip it to choose the direction, and right-click it → *Update direction* to change the
+  direction during the round. A small *Passed* list at the top right shows who passed.
+- **Pass order** (formerly the *Advanced Turn Order* house rule): each round is played in
+  the order the players passed in the round before. To pass, flip your *Actions* card
+  face down during your own turn. Your turn ends at once and you take the best free turn
+  order position for the next round. A small *Next round* list at the top right shows it.
+  Passed players still get turns, so they can take reactions as in the base rules. To
+  skip them instead, set `ATO_KEEP_TURNS_AFTER_PASS = false` in `scripts/Global.-1.lua`.
 
-While drafting and selecting factions, a panel shows all the positions. During play, the
-built-in turn indicator (top right) shows the current order, and a small *Next round* list
-at the top of the screen, just left of it, shows the order for the next round. Passed players still get turns, so they can take reactions as in the base
-rules. To skip them instead, set `ATO_KEEP_TURNS_AFTER_PASS = false` in `scripts/Global.-1.lua`.
+**Starting player**
+
+- **Yellow** (default): the Yellow player starts. If nobody sits at Yellow, the next
+  seated player after it does.
+- **Random:** a random player starts. With *Pass order* the whole round 1 turn order is
+  random, revealed one player at a time.
+- **Draft** (*Pass order* only): after *Setup*, players are put in a random draft order,
+  revealed one at a time. On their turn, each player takes either the best free race pick
+  position or the best free turn order position, and is put in the last free position of
+  the other track at the same time. The last player in the draft gets the remaining
+  positions automatically. With *Rotating*, or with *Random races*, *Draft* works as
+  *Random*.
+
+So the old Advanced Turn Order is *Pass order* + *Draft*.
+
+**Race selection** always comes after *Setup*, one player at a time: in reverse turn
+order (the player before the starting player picks first, the starting player last), or
+in the drafted race pick order. Only the player whose turn it is to pick sees the race
+buttons. A panel shows the race pick order and the round 1 turn order meanwhile.
+
+The starting techs are drawn at *Setup*. Tick **Tech setup after race selection** under
+*House Rules* (off by default) to draw them once every player has a race instead. It
+works with every turn order and starting player.
 
 ## Randomize seat order
 
 Tick **Randomize seat order** under *House Rules* in the setup popup, and pick when it
 happens in the dropdown next to it:
 
-- **Before drafting:** when *Setup* is pressed, before the Advanced Turn Order draft.
-  Without the Advanced Turn Order this works like *Before race selection*.
-- **Before race selection:** after the draft, or when *Setup* is pressed if there is no draft.
+- **Before drafting:** when *Setup* is pressed, before the draft. Without *Draft* as the
+  starting player this works like *Before race selection*.
+- **Before race selection:** after the draft, or when *Setup* is pressed (before the
+  starting player is chosen) if there is no draft.
 - **After race selection** (default): players pick factions first, but nothing is set
   up yet. Once everyone has picked, the seats are randomized and each faction is set up
-  at its player's new seat.
+  at its player's new seat. The seats people sit at before that decide nothing, so
+  (except with *Draft*) races are picked in a random order, and the starting player
+  setting isn't used: the last player to pick starts, and play goes clockwise from
+  their new seat.
 
 The seated players are moved to a random order of the seats they already use, by
 changing their player colors. Draft results, race picks and the turn order go with the
-player. Factions can only be picked after *Setup* is pressed. This works in hot seat too:
+player. This works in hot seat too:
 the hot seat players are moved between the colors in the same way.
 
 ## Random races
@@ -166,8 +191,8 @@ Tick **Random races** under *Options* in the setup popup. Nobody picks a race: a
 - The six Terran races count as one race in the draw. A player who draws it gets the
   Terran race of their own color (Purple gets the black one, Terran Alliance).
 - Pyxis Unity is never drawn. Expansion races are only drawn with *Expansion Species*.
-- With the **Advanced Turn Order** there is no draft. The random order revealed after
-  *Setup* is the round 1 turn order, and races are given out in that order.
+- Races are given out in race pick order (reverse turn order). There is no draft:
+  *Draft* as the starting player works as *Random*.
 - **Randomize seat order** works with it as with picked races.
 
 ## Player colors and hot seat
@@ -177,8 +202,7 @@ Black is the game master's seat and doesn't take part.
 
 Don't seat players at any other color. Orange has no seat at this table, and Pink, Teal
 and Brown aren't known to the mod. A player at one of those colors breaks faction setup
-(for example with *"You already selected nil"*) and the Advanced Turn Order draft.
+(for example with *"You already selected nil"*) and the turn order draft.
 
-**Hot seat** works with the Advanced Turn Order: the screen moves to whoever is due to
-choose, pick a faction or play. When you set up hot seat, give each player one of the
+**Hot seat:** the screen moves to whoever is due to choose, pick a faction or play. When you set up hot seat, give each player one of the
 six colors above.
