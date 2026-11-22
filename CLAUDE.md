@@ -106,6 +106,9 @@ https://api.tabletopsimulator.com/
   handlers, and the Advanced Turn Order code (`ATO_*`, near the end of the file). It's
   being split into components, see "Includes".
 - `include/ShipData.ttslua`, `include/ShipState.ttslua`: ship data and ship state, included in Global.
+- `include/SeatOrder.ttslua`: the "Randomize seat order" setup option (`SEAT_*`). Global
+  calls it from `gameSetup`, `PlayerSetup` (which records picks for later and sets up
+  factions through `placeFaction`), the Advanced Turn Order and the turn order panel.
 - `Global.-1.xml`: on-screen UI (setup popup, Advanced Turn Order panel).
 - `Button <Race>.<guid>.lua`: one per race. Each holds a faction table (`Name`,
   `startingShip`, `numStartingShips`, resources, `Influence`, `Box_GUID`, population

@@ -192,7 +192,7 @@
 
 				<Dropdown id="SeatTiming" minWidth="140" preferredWidth="140" flexibleWidth="0"
 					minHeight="30" preferredHeight="30" flexibleHeight="0" fontSize="12" textColor="#000000" itemTextColor="#000000"
-					interactable="false" onValueChanged="SetupUI_SeatTiming"
+					interactable="false" onValueChanged="SEAT_setTiming"
 					tooltip="When the seats are randomized. 'Before drafting' needs the Advanced Turn Order; without it, it works like 'Before race selection'."
 					tooltipBackgroundColor="rgba(0,0,0,0.95)">
 					<Option>Before drafting</Option>

@@ -1,0 +1,219 @@
+--------------------------------------------------------------------------------
+-- Randomize seat order (house rule)
+--------------------------------------------------------------------------------
+-- Optional, enabled with the "Randomize seat order" checkbox in the setup panel.
+-- The seated players are moved to a random permutation of the seats they occupy, by
+-- changing their player colors. When it happens is chosen in the dropdown next to it:
+--  "draft": before the Advanced Turn Order draft (without it: before race selection)
+--  "race":  before race selection (when "Setup" is pressed, or after the draft)
+--  "after": after race selection. Factions are then picked without setting them up;
+--           once everyone has picked, the seats are randomized and each faction is
+--           set up at its player's new seat.
+
+local SEAT_TIMINGS = {
+  ["Before drafting"] = "draft",
+  ["Before race selection"] = "race",
+  ["After race selection"] = "after",
+}
+-- colors without a seat, used to park one player while the others move
+local SEAT_TEMP_COLORS = {"Orange", "Pink", "Teal", "Brown"}
+local SEAT_MOVE_TIMEOUT = 5  -- seconds to wait for one player to change color
+local SEAT_PLACE_INTERVAL = 4  -- seconds between deferred faction setups (they share global state)
+local SEAT_busy = false
+
+-- when the seats are randomized: "draft", "race", "after", or nil when disabled
+function SEAT_timing()
+  if not settings.RandomizeSeats then return nil end
+  local timing = settings.SeatTiming or "after"
+  if timing == "draft" and not settings.AdvancedTurnOrder then timing = "race" end
+  return timing
+end
+
+-- setup panel: the timing dropdown is only usable with the checkbox ticked
+function SEAT_setTiming(player, value, elementId)
+  settings.SeatTiming = SEAT_TIMINGS[value] or "after"
+end
+
+function SEAT_updateSetupUI()
+  UI.setAttribute("RandomizeSeats", "isOn", settings.RandomizeSeats == true)
+  UI.setAttribute("SeatTiming", "interactable", settings.RandomizeSeats and "true" or "false")
+end
+
+-- called by PlayerSetup before anything else
+function SEAT_canPickRace(color)
+  if not settings.RandomizeSeats then return true end
+  if SEAT_busy then
+    broadcastToColor("Wait until the seats have been randomized.", color, {1, 0.4, 0.4})
+    return false
+  end
+  if not settings.setupCompleted then
+    broadcastToColor("Seats are randomized in this game: press Setup before selecting factions.", color, {1, 0.4, 0.4})
+    return false
+  end
+  return true
+end
+
+-- moves that carry out the permutation (old color -> new color) one empty seat at a
+-- time: for each cycle a1 -> a2 -> ... -> ak -> a1, park the player at ak, shift the
+-- others along, then bring the parked player to a1
+function SEAT_planMoves(colors, mapping, temp)
+  local moves, done = {}, {}
+  for _, start in ipairs(colors) do
+    if not done[start] then
+      local cycle = {}
+      local color = start
+      repeat
+        table.insert(cycle, color)
+        done[color] = true
+        color = mapping[color]
+      until color == start
+      local k = #cycle
+      if k > 1 then
+        table.insert(moves, {from = cycle[k], to = temp})
+        for i = k - 1, 1, -1 do table.insert(moves, {from = cycle[i], to = cycle[i + 1]}) end
+        table.insert(moves, {from = temp, to = cycle[1]})
+      end
+    end
+  end
+  return moves
+end
+
+function SEAT_randomize(onDone)
+  settings.SeatsRandomized = true
+  local colors = ATO_seatedPlayers()
+
+  local temp = nil
+  for _, color in ipairs(SEAT_TEMP_COLORS) do
+    if not Player[color].seated then temp = color break end
+  end
+  -- hot seat: every seat is the same Steam account, so moves are checked by which
+  -- seats are taken rather than by who sits in them
+  local hotseat = ATO_isHotseat()
+  local skip = nil
+  if #colors < 2 then skip = "fewer than two seated players"
+  elseif temp == nil then skip = "no free color to move players through" end
+  if skip ~= nil then
+    broadcastToAll("Randomize seat order: skipped (" .. skip .. ").", {1, 0.8, 0.4})
+    onDone()
+    return
+  end
+
+  local steamIds = {}
+  for _, color in ipairs(colors) do steamIds[color] = Player[color].steam_id end
+  local targets = ATO_shuffle(ATO_copy(colors))
+  local mapping = {}
+  for i, color in ipairs(colors) do mapping[color] = targets[i] end
+  local moves = SEAT_planMoves(colors, mapping, temp)
+
+  SEAT_busy = true
+  broadcastToAll("Randomizing the seat order...")
+  local index = 0
+  local step
+  step = function()
+    index = index + 1
+    local move = moves[index]
+    if move == nil then
+      SEAT_finish(colors, steamIds, temp, hotseat and mapping or nil)
+      onDone()
+      return
+    end
+    local mover = Player[move.from]
+    local steamId = mover.steam_id
+    if not mover.seated or steamId == nil then step() return end
+    mover.changeColor(move.to)
+    Wait.condition(step,
+      function()
+        if not Player[move.to].seated then return false end
+        if hotseat then return not Player[move.from].seated end
+        return Player[move.to].steam_id == steamId
+      end,
+      SEAT_MOVE_TIMEOUT,
+      function()
+        broadcastToAll("Randomize seat order: could not move a player to " .. move.to .. ".", {1, 0.4, 0.4})
+        step()
+      end)
+  end
+  step()
+end
+
+-- work out where everyone actually ended up, and update everything kept by color
+-- (hot seat: players can't be told apart by account, so the planned moves are used)
+function SEAT_finish(colors, steamIds, temp, plannedMapping)
+  SEAT_busy = false
+  local mapping = plannedMapping or {}
+  local lines = {}
+  if plannedMapping == nil then
+    for _, old in ipairs(colors) do
+      for _, new in ipairs(colors) do
+        if Player[new].seated and Player[new].steam_id == steamIds[old] then mapping[old] = new end
+      end
+    end
+  end
+  if Player[temp].seated then
+    broadcastToAll(ATO_name(temp) .. " was left at " .. temp .. ": move them to the free seat by hand.", {1, 0.4, 0.4})
+  end
+  SEAT_remap(mapping)
+
+  for _, color in ipairs(colors) do table.insert(lines, color .. ": " .. ATO_name(color)) end
+  broadcastToAll("New seats: " .. table.concat(lines, ", "))
+  ATO_updateUI()
+end
+
+-- state that refers to players by color follows them to their new color
+function SEAT_remap(mapping)
+  local function map(color)
+    if color and mapping[color] then return mapping[color] end
+    return color
+  end
+  local function mapList(list)
+    if list == nil then return end
+    for i = 1, #list do list[i] = map(list[i]) end
+  end
+
+  mapList(ATO.draftOrder)
+  mapList(ATO.raceSlots)
+  mapList(ATO.turnSlots)
+  mapList(ATO.order)
+  mapList(ATO.passOrder)
+  mapList(settings.PassOrder)
+
+  local choice = {}
+  for color, value in pairs(ATO.choice) do choice[map(color)] = value end
+  ATO.choice = choice
+  for guid, color in pairs(ATO.actionCards) do ATO.actionCards[guid] = map(color) end
+
+  local selection = {}
+  for color, faction in pairs(PlayerSelection) do selection[color] = faction end
+  for old, new in pairs(mapping) do selection[new] = PlayerSelection[old] end
+  PlayerSelection = selection
+
+  for _, pending in ipairs(settings.SeatPending or {}) do pending.color = map(pending.color) end
+end
+
+-- true when every seated player has selected a faction
+function SEAT_allSeatedPicked()
+  local seated = ATO_seatedPlayers()
+  if #seated == 0 then return false end
+  for _, color in ipairs(seated) do
+    if PlayerSelection[color] == nil or PlayerSelection[color] == 'none' then return false end
+  end
+  return true
+end
+
+-- seats randomized after race selection: remember the pick until then
+function SEAT_addPending(color, faction)
+  settings.SeatPending = settings.SeatPending or {}
+  table.insert(settings.SeatPending, {color = color, faction = faction})
+  broadcastToColor("Your faction is set up at your new seat once everyone has picked and the seats are randomized.",
+    color, {0.8, 0.9, 1})
+end
+
+-- set up the remembered factions one at a time, then continue
+function SEAT_placePending(onDone)
+  local pending = settings.SeatPending or {}
+  settings.SeatPending = {}
+  for i, entry in ipairs(pending) do
+    Wait.time(function() placeFaction(entry.color, entry.faction) end, 0.5 + (i - 1) * SEAT_PLACE_INTERVAL)
+  end
+  if onDone ~= nil then Wait.time(onDone, 0.5 + #pending * SEAT_PLACE_INTERVAL) end
+end
