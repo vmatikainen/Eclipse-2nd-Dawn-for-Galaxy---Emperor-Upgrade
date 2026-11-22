@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 -- Hex state: which sides have units in each hex of the map, in the order they arrived.
 --
--- Hexes: the map is a hex lattice centred on the Galactic Center at (0, 0), hexes 11.92
+-- Hexes: the map is a hex lattice centred on the Galactic Center at (0, 0), hexes 5.96
 -- apart centre to centre (flat sides facing +z / -z), the same geometry placeHomeworld
 -- uses. Any table position rounds to an axial coordinate (q, r), so sector tiles can be
 -- chained as far out as the players like. The table grid doesn't snap, so tiles lie only
@@ -21,7 +21,8 @@
 --
 -- Arrival order decides the combats: the last two sides to arrive fight first, the later
 -- one attacking; the winner then attacks the side that arrived before them, and so on
--- (defender wins initiative ties). NPCs were always there first.
+-- (defender wins initiative ties). NPCs always come first in the order: they are the
+-- original defenders and fight last, even if their ships were placed after a player's.
 --
 --   HexState_arrivals["q,r"] = { "Ancient", "Red", "Blue" }   -- first arrival first
 --
@@ -34,7 +35,7 @@
 HexState_arrivals = {}
 HexState_pickedFrom = {}     -- GUID of a held unit -> hex key it was picked up from
 
-local HEX_SPACING = 11.92                  -- centre to centre, = 2 x inner radius 5.96
+local HEX_SPACING = 5.96                   -- centre to centre (homeworlds, in ring II, are 11.92 out)
 local HEX_SIZE = HEX_SPACING / math.sqrt(3) -- corner radius
 local NPC_SIDE = { ancient = "Ancient", guardian = "Guardian", gcds = "GCDS" }
 local NPC_LABEL = { Ancient = "Ancients", Guardian = "Guardians", GCDS = "GCDS" }
@@ -130,7 +131,7 @@ local function scan(exclude)
   local orbitals, discs = {}, {}
   local ships = {}
   for _, obj in ipairs(getAllObjects()) do
-    if obj.getGUID() ~= exclude then
+    if obj ~= nil and not obj.isDestroyed() and obj.getGUID() ~= exclude then
       if isHexTile(obj) then
         local key, q, r = HexState_keyAt(obj.getPosition())
         if hexes[key] == nil then
@@ -186,7 +187,14 @@ local function reconcile(key, hex)
     return a < b
   end)
   for _, side in ipairs(new) do table.insert(order, side) end
-  HexState_arrivals[key] = (#order > 0) and order or nil
+  -- NPCs are always the original defenders, so they fight last, even when their ships
+  -- spawned after a player's (an explorer's ship lands on the tile before it is populated)
+  local npcs, players = {}, {}
+  for _, side in ipairs(order) do
+    table.insert(NPC_LABEL[side] ~= nil and npcs or players, side)
+  end
+  for _, side in ipairs(players) do table.insert(npcs, side) end
+  HexState_arrivals[key] = (#npcs > 0) and npcs or nil
 end
 
 --------------------------------------------------------------------------------
@@ -470,8 +478,11 @@ function HexState_onSpawn(obj)
   if isUnitLike(obj) then afterRest(obj) end
 end
 
+-- When the table is unloaded (leaving the game), every object is destroyed one by one, and
+-- scanning the table then would touch objects that are already gone. So reconcile a frame
+-- later (a frame that never comes on exit), when the destroyed object is off the table.
 function HexState_onDestroy(obj)
-  if not isUnitLike(obj) then return end
+  if obj == nil or not isUnitLike(obj) then return end
   HexState_pickedFrom[obj.getGUID()] = nil
-  reconcileAll(obj.getGUID())
+  Wait.frames(function() reconcileAll() end, 1)
 end

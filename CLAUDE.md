@@ -325,7 +325,8 @@ Both live in include files (`scripts/include/`, pulled into Global with `#includ
 It's the input for the combat zone.
 
 - **Hexes come from the lattice, not from tiles.** The Galactic Center is at (0, 0), and
-  hexes are 11.92 apart with flat sides facing ±z, the same geometry `placeHomeworld` uses.
+  hexes are 5.96 apart with flat sides facing ±z. Homeworlds are in ring II, 11.92 out, which
+  is where `placeHomeworld` puts them.
   `HexState_keyAt(position)` rounds any table position to an axial coordinate, key `"q,r"`.
   `HexState_center(q, r)` goes back. Sector III chains have no limit, and the grid doesn't
   snap, so tiles are only roughly aligned. A hex counts only while a sector tile (Sector
@@ -344,6 +345,9 @@ It's the input for the combat zone.
   the side that arrived before them, and so on. The defender wins initiative ties. E.g. Red
   holds a hex, then Blue enters, then Purple: Purple attacks Blue, and the winner attacks Red.
   With Ancients + Draco + a newcomer, the newcomer fights Draco first, then the Ancients.
+  **NPCs are always the original defenders** and fight last, whenever their ships were
+  placed. An explorer's ship usually lands on the new tile before `populateSector` spawns the
+  Ancients, so NPC sides are always put first in the order.
 - The arrival order is **saved** (`settings.HexState`). Every query and every drop, spawn or
   delete of a unit reconciles it with the table: sides that are gone are removed, and new
   sides are added at the end (NPCs first if several are new at once, e.g. on load). A held
