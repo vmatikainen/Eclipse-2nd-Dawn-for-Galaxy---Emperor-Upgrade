@@ -415,7 +415,8 @@ end
 function ShipState_updateTooltips(color, ship)
   local texts = {}
   for _, obj in ipairs(getAllObjects()) do
-    local c, s = ShipState_shipOf(obj)
+    local c, s = nil, nil
+    if obj ~= nil and not obj.isDestroyed() then c, s = ShipState_shipOf(obj) end
     if c ~= nil and (color == nil or c == color) and (ship == nil or s == ship) then
       local key = c .. " " .. s
       if texts[key] == nil then texts[key] = { c .. " - " .. shipName(c, s), ShipState_tooltip(c, s) } end
@@ -512,6 +513,18 @@ function ShipState_onPickUp(obj)
   if isShipTile(obj) then ShipState_remove(obj) end
 end
 
+-- When the table is unloaded (leaving the game), every object is destroyed one by one,
+-- and updating the tooltips then would touch objects that are already gone. So only
+-- forget the tile now, and update the tooltips a frame later, a frame that never comes
+-- on exit.
 function ShipState_onDestroy(obj)
-  if isShipTile(obj) then ShipState_remove(obj, true) end
+  if obj == nil or not isShipTile(obj) then return end
+  local where = ShipState_tiles[obj.getGUID()]
+  local wasRestoring = restoring
+  restoring = true
+  ShipState_remove(obj, true)
+  restoring = wasRestoring
+  if where ~= nil then
+    Wait.frames(function() ShipState_updateTooltips(where.color, where.ship) end, 1)
+  end
 end
