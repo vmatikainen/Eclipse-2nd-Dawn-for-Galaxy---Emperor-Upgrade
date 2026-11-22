@@ -20,7 +20,7 @@
 --  - Ships without cannons (missile boats) escape after the missile volley. They count as
 --    survivors if the battle is won.
 --  - NPCs hit the biggest ship they can destroy, else the biggest ship. Players destroy
---    what they can, the most damaged first. Morph Shield repairs 1 damage at the start of
+--    what they can, the most damaged first. Morph Shield repairs 1 damage at the end of
 --    each engagement round.
 --  - Rift cannons roll the rift die (CombatSim_RIFT_FACES): miss, 1 damage, 2 damage,
 --    3 damage + 1 self damage, 1 self damage, miss. Its hits ignore computers and shields.
@@ -371,12 +371,13 @@ function CombatSim_battle(groups)
   local rounds = 0
   while standing("player") > 0 and standing("npc") > 0 and rounds < CombatSim_MAX_ROUNDS do
     rounds = rounds + 1
+    volley("cannons")
+    -- Morph Shield: repair 1 damage at the end of each engagement round
     for _, side in pairs(sides) do
       for _, ship in ipairs(side) do
         if ship.alive and ship.tpl.regenerate and ship.dmg > 0 then ship.dmg = ship.dmg - 1 end
       end
     end
-    volley("cannons")
   end
   return standing("npc") == 0, sides.player
 end
