@@ -318,6 +318,7 @@ function onLoad(saveData)
     Wait.time(function()
       ShipState_restore()
       HexState_restore(savedHexes)
+      TechTrack_reconcile()
     end, 1)
     addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
     addContextMenuItem("Show NPC ships", function(player_color) ShipState_npcReport(player_color) end)
@@ -885,6 +886,7 @@ function placeFaction(color, faction)
     -- place influenbce discs, once the board is in place
     local funcInfluenceSetup = function() setupPlayerInfluence(Object, PlayerColor, Faction.Influence-1) end
     triggerFunctionIfResting(Object, funcInfluenceSetup)
+    triggerFunctionIfResting(Object, TechTrack_reconcile)
 
     if (Faction.Name =='Wardens of Magellan') then
       local funcMagellanSetup  = function() setupMagellan(Object, InvPos) end
@@ -1542,6 +1544,7 @@ end
 function onObjectPickUp(player, obj)
     ShipState_onPickUp(obj)
     HexState_onPickUp(obj)
+    ActionAnnounce_onPickUp(obj)
     if obj.tag == "Chip" and obj.getQuantity() > 1 then
         if string.find(obj.getName(), "Tech %-") != nil then
             obj.drop()
@@ -1564,7 +1567,7 @@ end
 
 
 -- Blip the size of sector hexes so they fit together --
-function onObjectDrop(_, obj)
+function onObjectDrop(player_color, obj)
     if obj.use_grid == true then
         Wait.condition(
             function() blip(obj) end,
@@ -1575,11 +1578,14 @@ function onObjectDrop(_, obj)
     stopSectorWatchUnder(obj)
     ShipState_onDrop(obj)
     HexState_onDrop(obj)
+    TechTrack_onDrop(player_color, obj)
+    ActionAnnounce_onDrop(obj)
 end
 
 function onObjectDestroy(obj)
     ShipState_onDestroy(obj)
     HexState_onDestroy(obj)
+    TechTrack_onDestroy(obj)
 end
 
 function onObjectSpawn(obj)
@@ -2687,6 +2693,18 @@ end
 #include ShipState
 #include HexState
 #include CombatZone
+
+
+--------------------------------------------------------------------------------
+-- Tech tiles on the player boards' tech tracks (scripts/include/TechTrack.ttslua)
+--------------------------------------------------------------------------------
+#include TechTrack
+
+
+--------------------------------------------------------------------------------
+-- Announce actions taken with influence discs (scripts/include/ActionAnnounce.ttslua)
+--------------------------------------------------------------------------------
+#include ActionAnnounce
 
 
 --------------------------------------------------------------------------------

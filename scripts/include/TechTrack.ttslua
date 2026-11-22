@@ -1,0 +1,288 @@
+--------------------------------------------------------------------------------
+-- Tech tracks: tech tiles on the player boards, and ship parts dragged from them.
+--
+-- A tech tile (tag TechTile) that comes to rest on a tech space of a player's board
+-- (snap points 47-67, see "Snap point convention" in CLAUDE.md) is put exactly on the
+-- space, turned to the board's rotation, face up, and locked.
+--
+-- The track has to match the tile: its name starts with the track, e.g.
+-- "Military Tech - Plasma Cannon". Rare techs ("Rare Tech - ...") go on any track.
+-- A tile on the wrong track, on a space that already has a tile, or on a space with a
+-- printed start tech is left as it is, unlocked, and the player is told why.
+--
+-- Part sources: every ship-upgrade tech a player has (a locked tile on a tech space, or a
+-- start tech printed on the board) gets a "part source" over its space: a transparent,
+-- locked copy of the "<Part> Parts" infinite bag. Dragging from the tech then gives a
+-- ship part tile, like dragging from the supply bag. Sources are tagged TechPartSource,
+-- with GMNotes "TechSource <board GUID> <snap point>". They are ordinary objects and are
+-- saved with the table; TechTrack_reconcile() makes them match the boards again.
+-- A tile under a source is unlocked again with the source's "Remove tech tile" menu item.
+--------------------------------------------------------------------------------
+
+-- snap point number of space 1 of each track; each track has 7 spaces
+TECH_TRACKS = {
+  { name = "Military", first = 47 },
+  { name = "Grid",     first = 54 },
+  { name = "Nano",     first = 61 },
+}
+TECH_TRACK_SPACES = 7
+
+-- start techs printed on the boards (read from the board images), faction -> snap -> tech
+TECH_PRINTED = {
+  ["Eridani Empire"]       = { [47] = "Plasma Cannon", [54] = "Gauss Shield", [61] = "Fusion Drive" },
+  ["Orion Hegemony"]       = { [47] = "Neutron Bombs", [54] = "Gauss Shield" },
+  ["Rho Indi Syndicate"]   = { [47] = "Starbase", [54] = "Gauss Shield" },
+  ["Mechanema"]            = { [54] = "Positron Computer" },
+  ["Descendants of Draco"] = { [61] = "Fusion Drive" },
+  ["Wardens of Magellan"]  = { [54] = "Fusion Source" },
+  ["Enlightened of Lyra"]  = { [54] = "Fusion Source" },
+  ["Hydran Progress"]      = { [61] = "Advanced Labs" },
+  ["The Exiles"]           = { [47] = "Cloaking Device", [61] = "Orbitals" },
+  ["Planta"]               = { [47] = "Starbase" },
+  ["Terran Alliance"]      = { [47] = "Starbase" },
+  ["Terran Conglomerate"]  = { [47] = "Starbase" },
+  ["Terran Directorate"]   = { [47] = "Starbase" },
+  ["Terran Federation"]    = { [47] = "Starbase" },
+  ["Terran Republic"]      = { [47] = "Starbase" },
+  ["Terran Union"]         = { [47] = "Starbase" },
+}
+
+local TECH_SNAP_RADIUS = 0.14   -- board-local units; tech spaces are about 0.29 apart
+local TECH_SOURCE_TAG = "TechPartSource"
+local TECH_SOURCE_LIFT = 0.25   -- the source floats this far above the space
+local TECH_ERROR = {1, 0.4, 0.4}
+
+local function techHasTag(obj, wanted)
+  for _, tag in ipairs(obj.getTags()) do
+    if tag == wanted then return true end
+  end
+  return false
+end
+
+-- the track a tile belongs on ("Military", "Grid", "Nano" or "Rare"), and its short name
+local function techKind(obj)
+  local kind, name = string.match(obj.getName(), "^(%a+) Tech %- (.+)$")
+  return kind, name or obj.getName()
+end
+
+-- the "<Part> Parts" infinite bag of a ship part, or nil if the tech isn't a ship part
+local partBags = nil   -- part name -> bag GUID
+local function partBag(name)
+  if partBags == nil then
+    partBags = {}
+    for _, obj in ipairs(getAllObjects()) do
+      if obj.type == "Infinite" or string.find(obj.name, "Infinite_Bag", 1, true) then
+        local part = string.match(obj.getName(), "^(.+) Parts$")
+        if part ~= nil then partBags[part] = obj.getGUID() end
+      end
+    end
+  end
+  local guid = partBags[name]
+  return guid and getObjectFromGUID(guid)
+end
+
+-- the player board, track and space (1-7) under an object, or nil
+function TechTrack_spaceAt(obj)
+  local position = obj.getPosition()
+  for color, _ in pairs(PlayerState) do
+    local board = PlayerState_board(color)
+    if board ~= nil then
+      local here = board.positionToLocal(position)
+      local snaps = board.getSnapPoints()
+      for _, track in ipairs(TECH_TRACKS) do
+        for space = 1, TECH_TRACK_SPACES do
+          local snap = snaps[track.first + space - 1]
+          if snap ~= nil then
+            local dx, dz = here.x - snap.position.x, here.z - snap.position.z
+            if dx * dx + dz * dz <= TECH_SNAP_RADIUS * TECH_SNAP_RADIUS then
+              return { color = color, board = board, track = track.name, space = space,
+                       snap = track.first + space - 1,
+                       position = board.positionToWorld(snap.position) }
+            end
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+-- the start tech printed on a color's board at a snap point, or nil
+local function printedTech(color, snap)
+  local printed = TECH_PRINTED[PlayerState_faction(color) or ""]
+  return printed and printed[snap]
+end
+
+-- another tech tile already lying on the same space, or nil
+local function occupant(obj, where)
+  for _, other in ipairs(getObjectsWithTag("TechTile")) do
+    if other ~= obj and other.held_by_color == nil then
+      local p = other.getPosition()
+      local dx, dz = p.x - where.position.x, p.z - where.position.z
+      if dx * dx + dz * dz < 0.5 * 0.5 then return other end   -- spaces are about 1.8 apart
+    end
+  end
+  return nil
+end
+
+local function tell(playerColor, text)
+  if playerColor ~= nil and Player[playerColor] ~= nil and Player[playerColor].seated then
+    broadcastToColor(text, playerColor, TECH_ERROR)
+  else
+    printToAll(text, TECH_ERROR)
+  end
+end
+
+-- put a resting tile in place on its tech space and lock it
+function TechTrack_place(obj, playerColor)
+  if obj == nil or obj.isDestroyed() or obj.getLock() then return end
+  local where = TechTrack_spaceAt(obj)
+  if where == nil then return end
+
+  local kind, name = techKind(obj)
+  if kind ~= "Rare" and kind ~= where.track then
+    tell(playerColor, string.format("%s is a %s tech: it goes on the %s track, not %s.",
+                                    name, kind or "?", kind or "?", where.track))
+    return
+  end
+  local printed = printedTech(where.color, where.snap)
+  if printed ~= nil then
+    tell(playerColor, string.format("That %s space has %s printed on it.", where.track, printed))
+    return
+  end
+  local other = occupant(obj, where)
+  if other ~= nil then
+    tell(playerColor, string.format("That %s space already has %s.", where.track,
+                                    select(2, techKind(other))))
+    return
+  end
+
+  local position = where.position
+  position.y = obj.getPosition().y
+  obj.setPosition(position)
+  obj.setRotation({0, where.board.getRotation().y, 0})
+  obj.setLock(true)
+  TechTrack_reconcile()
+end
+
+--------------------------------------------------------------------------------
+-- part sources
+
+local function sourceKey(board, snap)
+  return "TechSource " .. board.getGUID() .. " " .. snap
+end
+
+-- the part sources there should be: key -> { part, board, snap, tile (nil if printed) }
+local function wantedSources()
+  local wanted = {}
+  for color, _ in pairs(PlayerState) do
+    local board = PlayerState_board(color)
+    local printed = TECH_PRINTED[PlayerState_faction(color) or ""]
+    if board ~= nil and printed ~= nil then
+      for snap, tech in pairs(printed) do
+        if partBag(tech) ~= nil then
+          wanted[sourceKey(board, snap)] = { part = tech, board = board, snap = snap }
+        end
+      end
+    end
+  end
+  for _, tile in ipairs(getObjectsWithTag("TechTile")) do
+    if tile.getLock() then
+      local where = TechTrack_spaceAt(tile)
+      local _, name = techKind(tile)
+      if where ~= nil and partBag(name) ~= nil then
+        wanted[sourceKey(where.board, where.snap)] =
+          { part = name, board = where.board, snap = where.snap, tile = tile }
+      end
+    end
+  end
+  return wanted
+end
+
+-- where a source goes: just above its space, turned like the board
+local function sourceTransform(want)
+  local snap = want.board.getSnapPoints()[want.snap]
+  local position = want.board.positionToWorld(snap.position)
+  position.y = position.y + TECH_SOURCE_LIFT
+  return position, Vector(0, want.board.getRotation().y, 0)
+end
+
+local function sourceDescription(want)
+  local text = "Drag to take a " .. want.part .. " ship part."
+  if want.tile ~= nil then
+    text = want.tile.getDescription() .. "\n\n" .. text .. "\nRight-click: Remove tech tile."
+  end
+  return text
+end
+
+-- unlock the tech tile under a source and take the source away
+local function removeTile(source)
+  local want = wantedSources()[source.getGMNotes()]
+  source.destruct()
+  if want ~= nil and want.tile ~= nil then
+    want.tile.setLock(false)
+    want.tile.setPositionSmooth(want.tile.getPosition() + Vector(0, 1, 0), false, true)
+  end
+end
+
+local function addMenu(source, want)
+  source.clearContextMenu()
+  if want.tile ~= nil then
+    source.addContextMenuItem("Remove tech tile", function() removeTile(source) end)
+  end
+end
+
+local function spawnSource(key, want)
+  local bag = partBag(want.part)
+  local data = bag.getData()
+  data.GUID = nil
+  data.Nickname = want.tile and want.tile.getName() or want.part
+  data.Description = sourceDescription(want)
+  data.GMNotes = key
+  data.Tags = { TECH_SOURCE_TAG }
+  data.Locked = true
+  data.ColorDiffuse = { r = 1, g = 1, b = 1, a = 0 }
+  local position, rotation = sourceTransform(want)
+  spawnObjectData({ data = data, position = position, rotation = rotation,
+                    callback_function = function(source) addMenu(source, want) end })
+end
+
+-- make the part sources on the table match the techs on the boards
+function TechTrack_reconcile()
+  local wanted = wantedSources()
+  for _, source in ipairs(getObjectsWithTag(TECH_SOURCE_TAG)) do
+    local key = source.getGMNotes()
+    local want = wanted[key]
+    if want == nil or source.getName() ~= (want.tile and want.tile.getName() or want.part) then
+      source.destruct()
+    else
+      wanted[key] = nil
+      local position, rotation = sourceTransform(want)
+      if (source.getPosition() - position):magnitude() > 0.05 then
+        source.setPosition(position)
+        source.setRotation(rotation)
+      end
+      source.setDescription(sourceDescription(want))
+      addMenu(source, want)   -- context menus aren't saved
+    end
+  end
+  for key, want in pairs(wanted) do spawnSource(key, want) end
+end
+
+--------------------------------------------------------------------------------
+-- events (called from Global's onLoad, placeFaction, onObjectDrop and onObjectDestroy)
+
+function TechTrack_onDrop(playerColor, obj)
+  if not techHasTag(obj, "TechTile") then return end
+  -- wait for the tile to settle on its snap point
+  local place = function() TechTrack_place(obj, playerColor) end
+  Wait.condition(place, function() return obj == nil or obj.isDestroyed() or obj.resting end, 3, place)
+end
+
+-- When the table is unloaded every object is destroyed one by one; reconciling then
+-- would spawn objects during the unload. So wait a frame, a frame that never comes on exit.
+function TechTrack_onDestroy(obj)
+  if obj ~= nil and techHasTag(obj, "TechTile") and obj.getLock() then
+    Wait.frames(TechTrack_reconcile, 1)
+  end
+end
