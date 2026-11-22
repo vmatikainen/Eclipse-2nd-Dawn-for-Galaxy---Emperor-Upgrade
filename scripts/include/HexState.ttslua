@@ -132,7 +132,11 @@ local function scan(exclude)
   local ships = {}
   for _, obj in ipairs(getAllObjects()) do
     if obj ~= nil and not obj.isDestroyed() and obj.getGUID() ~= exclude then
-      if isHexTile(obj) then
+      -- ships moved to the combat zone still count in their hex, on their side
+      local homeKey, homeSide = CombatZone_unitHome(obj)
+      if homeKey ~= nil then
+        table.insert(ships, { obj = obj, side = homeSide, key = homeKey })
+      elseif isHexTile(obj) then
         local key, q, r = HexState_keyAt(obj.getPosition())
         if hexes[key] == nil then
           hexes[key] = { q = q, r = r, tile = obj, tiles = {}, units = {}, number = HexState_sectorNumber(obj) }
@@ -156,7 +160,7 @@ local function scan(exclude)
     end
   end
   for _, unit in ipairs(ships) do
-    local hex = hexes[objectKey(unit.obj)]
+    local hex = hexes[unit.key or objectKey(unit.obj)]
     if hex ~= nil then
       hex.units[unit.side] = hex.units[unit.side] or {}
       table.insert(hex.units[unit.side], unit.obj)
@@ -283,25 +287,33 @@ local function unitCounts(objs)
 end
 
 -- a player side: "Red (2 Interceptors)"; an NPC side is its ships: "2 Ancients"
-local function sideText(hex, side)
+-- (colored: for the combat zone's lists, the player's Steam name in their color as rich
+-- text; the color name in hot seat, where every seat has the same Steam name)
+local function playerName(side, colored)
+  if not colored then return side end
+  local name = ATO_isHotseat() and side or ATO_name(side)
+  return "<color=#" .. Color.fromString(side):toHex(false) .. ">" .. name .. "</color>"
+end
+
+local function sideText(hex, side, colored)
   local counts = unitCounts(hex.units[side])
   if NPC_LABEL[side] ~= nil then return counts end
-  return side .. " (" .. counts .. ")"
+  return playerName(side, colored) .. " (" .. counts .. ")"
 end
 
 -- the combats of a hex in order, one line each (empty if it isn't contested)
-local function combatLines(hex, order)
+local function combatLines(hex, order, colored)
   local lines = {}
   local n = #order
   if n < 2 then return lines end
-  table.insert(lines, sideText(hex, order[n]) .. " vs " .. sideText(hex, order[n - 1]))
+  table.insert(lines, sideText(hex, order[n], colored) .. " vs " .. sideText(hex, order[n - 1], colored))
   for i = n - 2, 1, -1 do
     local defender = order[i]
     local friends = {}
     for j = i + 1, n do
       if not HexState_hostile(order[j], defender) then table.insert(friends, NPC_LABEL[order[j]] or order[j]) end
     end
-    local line = "Winner vs " .. sideText(hex, defender)
+    local line = "Winner vs " .. sideText(hex, defender, colored)
     if #friends > 0 then line = line .. " (unless " .. table.concat(friends, " or ") .. " wins)" end
     table.insert(lines, line)
   end
@@ -333,6 +345,7 @@ local function updateTooltips(hexes)
       if tile.tooltip ~= show then tile.tooltip = show end
     end
   end
+  return fights
 end
 
 local function reconcileAll(exclude)
@@ -341,7 +354,7 @@ local function reconcileAll(exclude)
   for key, _ in pairs(HexState_arrivals) do keys[key] = true end
   for key, _ in pairs(hexes) do keys[key] = true end
   for key, _ in pairs(keys) do reconcile(key, hexes[key]) end
-  updateTooltips(hexes)
+  HexState_publish(updateTooltips(hexes))
   return hexes
 end
 
@@ -428,6 +441,30 @@ function HexState_report(color)
       printToColor("    " .. line, color, {1, 0.8, 0.4})
     end
   end
+end
+
+--------------------------------------------------------------------------------
+-- the combat lists in the combat zone (CombatZone_setCombats), updated on every reconcile
+
+-- "Sector 203", or the tile's name if it has no number (the Lyra Homeworld)
+local function hexTitle(hex)
+  if hex.number ~= nil then return string.format("Sector %03d", hex.number) end
+  return hex.tile.getName()
+end
+
+-- fights: contested hexes in combat order, as updateTooltips returns them. Each combat:
+-- { title = "Sector 203", lines = { one per fight }, sides = { names, last arrival first } }
+function HexState_publish(fights)
+  local combats = {}
+  for _, hex in ipairs(fights) do
+    local order = HexState_arrivals[hex.key]
+    local sides = {}
+    for i = #order, 1, -1 do
+      table.insert(sides, NPC_LABEL[order[i]] or playerName(order[i], true))
+    end
+    table.insert(combats, { title = hexTitle(hex), lines = combatLines(hex, order, true), sides = sides })
+  end
+  CombatZone_setCombats(combats)
 end
 
 --------------------------------------------------------------------------------

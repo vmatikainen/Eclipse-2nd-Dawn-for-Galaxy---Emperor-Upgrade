@@ -1,0 +1,976 @@
+--------------------------------------------------------------------------------
+-- Combat zone: the area on the left side table (the race selection mat, ac4050) where
+-- combats are fought. The ships of a contested hex (HexState_contested) will be moved
+-- here, and the right dice picked for each side.
+--
+-- The mat was destroyed after race selection in the original mod. It now stays: only the
+-- race tiles and buttons on it are removed (hideRaceSelection). Once race selection is
+-- over, the mat is named "Combat Zone" and the zone's area is outlined on it.
+--
+-- The area is the middle 40% of the mat's long side (z) and its full depth (x) less a
+-- margin, read from the mat's bounds, so it follows the mat if the mat is ever moved or
+-- resized. The strips left free at both ends (z) are for combat UI information. The mat
+-- sits lower than the main table (its top is near y = -0.5), so objects placed here rest
+-- lower too.
+--
+-- Regions: a divider across the middle (z) splits the area into two sides, one per row of
+-- seats: side 1 at low z, side 2 at high z. Three columns run across both sides (along x):
+-- Destroyed | Combat | Escaped. So each side has its own three regions:
+--   combat     the ships fighting now are moved here
+--   destroyed  destroyed ships are put here
+--   escaped    ships that retreated are put here
+-- Nothing is resolved automatically: the regions only keep each side's ships apart, so
+-- they can be returned to the right places afterwards. Each region has a label at its
+-- outer edge, facing its side's seats.
+--
+--   CombatZone_area()           -> { center, size, min, max } (world coordinates), or nil
+--   CombatZone_contains(pos)    -> true if a table position lies inside the area
+--   CombatZone_region(side, name) -> box of one region (side 1 or 2; "combat",
+--                                  "destroyed" or "escaped"), same shape as the area
+--   CombatZone_regionAt(pos)    -> side, name of the region a position lies in, or nil
+--   CombatZone_objects()        -> every object in the area (except the mat)
+--   CombatZone_show()           names the mat, draws the outline and the combat lists
+--                               (after race selection)
+--   CombatZone_setCombats(list) new combat list, from HexState on every reconcile
+--
+-- Combat lists: both free strips show the combats on the board (like "Show combats"), as
+-- XML UI on the mat, one panel per strip. Each panel faces the row of players on its side
+-- of the table (the strip at +z is read from the +z seats). The panels are placed from
+-- the mat's bounds at runtime. Object UI is in the object's local space, 100 UI units to
+-- a local unit, and scales with the object: each panel's scale undoes the mat's (uneven)
+-- scale, so 100 UI units are 1 world unit on the table. If the text shows upside down
+-- on both panels, set COMBAT_ZONE_UI_TURN to 180.
+--------------------------------------------------------------------------------
+
+local COMBAT_ZONE_MAT_GUID = 'ac4050'
+local COMBAT_ZONE_MARGIN = 1.5               -- left free along the mat's long edges (x)
+local COMBAT_ZONE_LENGTH = 0.4               -- share of the mat's long side (z), centred
+local COMBAT_ZONE_HEIGHT = 6                 -- how high above the mat objects still count
+local COMBAT_ZONE_LINE_COLOR = { 0.85, 0.3, 0.2 }
+local COMBAT_ZONE_UI_PER_UNIT = 100           -- object UI units per local unit
+local COMBAT_ZONE_UI_TURN = 0                 -- extra rotation of both panels (0 or 180)
+local COMBAT_ZONE_UI_INSET = 1                -- world units kept clear around each panel
+local COMBAT_ZONE_TEXT_COLOR = "#ffcc66"
+local COMBAT_ZONE_LIST_WIDTH = 0.5            -- share of the strip's width the list takes
+local COMBAT_ZONE_LIST_FULL = 7               -- more fights than this: one line per hex
+local COMBAT_ZONE_BUTTON_ROOM = 3.5           -- kept free for the buttons next to the area
+-- the Damage Cubes bags (one at each long side of the table), moved to the strips of
+-- side 1 (low z) and side 2 (high z)
+local COMBAT_ZONE_DAMAGE_BAGS = { 'a3ea24', 'fdd6be' }
+local COMBAT_ZONE_DIVIDER_COLOR = { 0.95, 0.75, 0.3 }
+local COMBAT_ZONE_LABEL_COLOR = "#ffffff99"
+-- the columns along world x, from low x to high x; share = part of the area's width
+local COMBAT_ZONE_COLUMNS = {
+  { name = "destroyed", label = "Destroyed", share = 0.2 },
+  { name = "combat",    label = "Combat",    share = 0.6 },
+  { name = "escaped",   label = "Escaped",   share = 0.2 },
+}
+
+CombatZone_combats = {}                       -- { { title, lines = { ... } }, ... }
+local combatZoneShown = false
+local combatZonePanels = {}                   -- ids of the lists' Text elements
+local combatZoneText = nil                    -- the text the lists show now
+local combatZoneDetailPanels = {}             -- ids of the current combat panels' Text elements
+local combatZoneDetailText = nil              -- the text those show now
+
+-- the mat, or nil if it's gone (e.g. a save made before the combat zone existed)
+function CombatZone_mat()
+  return getObjectFromGUID(COMBAT_ZONE_MAT_GUID)
+end
+
+local function box(min, max)
+  return {
+    center = Vector((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2),
+    size = Vector(max.x - min.x, max.y - min.y, max.z - min.z),
+    min = min,
+    max = max,
+  }
+end
+
+-- the area as an axis-aligned box: center, size, min and max corners (world coordinates);
+-- y runs from the mat's top surface up COMBAT_ZONE_HEIGHT
+function CombatZone_area()
+  local mat = CombatZone_mat()
+  if mat == nil then return nil end
+  local bounds = mat.getBounds()
+  local top = bounds.center.y + bounds.size.y / 2
+  local halfLength = bounds.size.z * COMBAT_ZONE_LENGTH / 2
+  local min = Vector(bounds.center.x - bounds.size.x / 2 + COMBAT_ZONE_MARGIN, top,
+                     bounds.center.z - halfLength)
+  local max = Vector(bounds.center.x + bounds.size.x / 2 - COMBAT_ZONE_MARGIN, top + COMBAT_ZONE_HEIGHT,
+                     bounds.center.z + halfLength)
+  return box(min, max)
+end
+
+-- true if the position (x and z; y is ignored) lies inside the area
+function CombatZone_contains(position)
+  local area = CombatZone_area()
+  if area == nil then return false end
+  return position.x >= area.min.x and position.x <= area.max.x
+     and position.z >= area.min.z and position.z <= area.max.z
+end
+
+-- one region: side 1 (low z) or 2 (high z), name "combat", "destroyed" or "escaped"
+function CombatZone_region(side, name)
+  local area = CombatZone_area()
+  if area == nil then return nil end
+  local x = area.min.x
+  for _, column in ipairs(COMBAT_ZONE_COLUMNS) do
+    local width = area.size.x * column.share
+    if column.name == name then
+      local z1, z2 = area.min.z, area.center.z
+      if side == 2 then z1, z2 = area.center.z, area.max.z end
+      return box(Vector(x, area.min.y, z1), Vector(x + width, area.max.y, z2))
+    end
+    x = x + width
+  end
+  return nil
+end
+
+-- the region a table position lies in: side, name (nil if it's outside the area)
+function CombatZone_regionAt(position)
+  for side = 1, 2 do
+    for _, column in ipairs(COMBAT_ZONE_COLUMNS) do
+      local region = CombatZone_region(side, column.name)
+      if region ~= nil
+          and position.x >= region.min.x and position.x <= region.max.x
+          and position.z >= region.min.z and position.z <= region.max.z then
+        return side, column.name
+      end
+    end
+  end
+  return nil
+end
+
+-- every object in the area, except the mat itself
+function CombatZone_objects()
+  local area = CombatZone_area()
+  if area == nil then return {} end
+  local hits = Physics.cast({
+    origin = area.center,
+    direction = Vector(0, 1, 0),
+    type = 3,                 -- box
+    size = area.size,
+    max_distance = 0,
+  })
+  local objects = {}
+  for _, hit in ipairs(hits) do
+    local obj = hit.hit_object
+    if obj ~= nil and obj.getGUID() ~= COMBAT_ZONE_MAT_GUID and obj.type ~= "Surface" then
+      table.insert(objects, obj)
+    end
+  end
+  return objects
+end
+
+--------------------------------------------------------------------------------
+-- combat lists
+
+-- the text both panels show: the number of fights, then each hex and its fights. With
+-- more than COMBAT_ZONE_LIST_FULL fights, one line per hex: "Sector 203 (Green vs Blue)".
+local function combatListText()
+  local combats = CombatZone_combats
+  if #combats == 0 then return "<b>Combats</b>\n\nNo combats on the board." end
+  local fights = 0
+  for _, combat in ipairs(combats) do fights = fights + #combat.lines end
+  local lines = { "<b>Combats (" .. fights .. ")</b>", "" }
+  for _, combat in ipairs(combats) do
+    if fights > COMBAT_ZONE_LIST_FULL then
+      table.insert(lines, "<b>" .. combat.title .. "</b> (" .. table.concat(combat.sides, " vs ") .. ")")
+    else
+      table.insert(lines, "<b>" .. combat.title .. "</b>")
+      for _, line in ipairs(combat.lines) do table.insert(lines, "    " .. line) end
+    end
+  end
+  return table.concat(lines, "\n")
+end
+
+-- show the current lists and the current combat on the panels (once the mat's UI has
+-- loaded); only text that changed is sent
+local function refreshLists()
+  local mat = CombatZone_mat()
+  if not combatZoneShown or mat == nil or #combatZonePanels == 0 or mat.UI.loading then return end
+  local text = combatListText()
+  if text ~= combatZoneText then
+    combatZoneText = text
+    for _, id in ipairs(combatZonePanels) do mat.UI.setValue(id, text) end
+  end
+  local details = CombatZone_detailsText()
+  if details ~= combatZoneDetailText then
+    combatZoneDetailText = details
+    for _, id in ipairs(combatZoneDetailPanels) do mat.UI.setValue(id, details) end
+  end
+end
+
+-- after ships moved by script (there is no drop event for those)
+function CombatZone_refresh()
+  refreshLists()
+end
+
+function CombatZone_setCombats(combats)
+  CombatZone_combats = combats or {}
+  refreshLists()
+end
+
+local function fmt(v) return string.format("%.1f", v) end
+
+-- the direction text on a panel facing a side reads in, along world x: side 1's seats
+-- (low z) read towards +x, side 2's towards -x
+local function readingDirection(side)
+  local direction = (side == 1) and 1 or -1
+  if COMBAT_ZONE_UI_TURN == 180 then direction = -direction end
+  return direction
+end
+
+-- XML for a panel lying on the mat, centred on world (x, z), w wide along world x and
+-- h deep along world z, turned so the text's top points away from side's seats
+local function panelOnMat(mat, x, z, w, h, side, attributes, inner)
+  local scale = mat.getScale()
+  local bounds = mat.getBounds()
+  local here = mat.positionToLocal(Vector(x, bounds.center.y + bounds.size.y / 2, z))
+  local turn = ((side == 1) and 90 or 270) + COMBAT_ZONE_UI_TURN
+  -- text runs along world x (the mat's local z), lines stack along world z (local x)
+  local u = COMBAT_ZONE_UI_PER_UNIT
+  return string.format(
+    '<Panel position="%s %s %s" rotation="0 0 %d" scale="%s %s 1" width="%d" height="%d" raycastTarget="false" %s>%s</Panel>',
+    fmt(here.x * u), fmt(here.z * u), fmt(-(here.y * u + 5)), turn,
+    tostring(100 / (u * scale.z)), tostring(100 / (u * scale.x)),
+    math.floor(w * 100), math.floor(h * 100), attributes, inner)
+end
+
+-- the combat list in the strip at side's end of the mat, between z1 and z2 (world). It
+-- takes the reader's left part of the strip (the rest is for the current combat's details).
+local function listXml(mat, id, side, z1, z2)
+  local bounds = mat.getBounds()
+  local stripWidth = bounds.size.x - 2 * COMBAT_ZONE_UI_INSET
+  local listWidth = stripWidth * COMBAT_ZONE_LIST_WIDTH
+  local x = bounds.center.x - readingDirection(side) * (stripWidth - listWidth) / 2
+  return panelOnMat(mat, x, (z1 + z2) / 2, listWidth, math.abs(z2 - z1) - 2 * COMBAT_ZONE_UI_INSET, side,
+    'color="#0b141cc0" padding="50 50 40 40"',
+    string.format('<Text id="%s" raycastTarget="false" alignment="UpperLeft" color="%s" fontSize="80" resizeTextForBestFit="true" '
+      .. 'resizeTextMinSize="30" resizeTextMaxSize="80"> </Text>', id, COMBAT_ZONE_TEXT_COLOR))
+end
+
+-- the current combat panel: the reader's right part of the strip between z1 and z2,
+-- leaving room for the buttons next to the combat area
+local function detailsXml(mat, id, side, z1, z2)
+  local bounds = mat.getBounds()
+  local stripWidth = bounds.size.x - 2 * COMBAT_ZONE_UI_INSET
+  local listWidth = stripWidth * COMBAT_ZONE_LIST_WIDTH
+  local width = stripWidth - listWidth - COMBAT_ZONE_UI_INSET
+  local x = bounds.center.x + readingDirection(side) * (stripWidth - width) / 2
+  -- side 1's strip ends at the area at z2, side 2's at z1
+  if side == 1 then z2 = z2 - COMBAT_ZONE_BUTTON_ROOM else z1 = z1 + COMBAT_ZONE_BUTTON_ROOM end
+  return panelOnMat(mat, x, (z1 + z2) / 2, width, math.abs(z2 - z1) - 2 * COMBAT_ZONE_UI_INSET, side,
+    'color="#0b141cc0" padding="50 50 40 40"',
+    string.format('<Text id="%s" raycastTarget="false" alignment="UpperLeft" color="%s" fontSize="80" resizeTextForBestFit="true" '
+      .. 'resizeTextMinSize="30" resizeTextMaxSize="80"> </Text>', id, COMBAT_ZONE_TEXT_COLOR))
+end
+
+-- a region's name along its outer edge (away from the divider), facing its side's seats
+local function labelXml(mat, side, column)
+  local region = CombatZone_region(side, column.name)
+  local depth = 1.4
+  local z = (side == 1) and (region.min.z + depth / 2) or (region.max.z - depth / 2)
+  return panelOnMat(mat, region.center.x, z, region.size.x, depth, side, 'color="#00000000"',
+    string.format('<Text raycastTarget="false" alignment="MiddleCenter" color="%s" fontSize="80" fontStyle="Bold">%s</Text>',
+      COMBAT_ZONE_LABEL_COLOR, column.label))
+end
+
+-- the mat's UI: both combat lists, in the strips left free at both ends, and the labels
+local function showUI(mat)
+  local bounds = mat.getBounds()
+  local area = CombatZone_area()
+  local matMinZ, matMaxZ = bounds.center.z - bounds.size.z / 2, bounds.center.z + bounds.size.z / 2
+  combatZonePanels = { "CombatZone_ListLow", "CombatZone_ListHigh" }
+  combatZoneDetailPanels = { "CombatZone_DetailsLow", "CombatZone_DetailsHigh" }
+  local xml = { listXml(mat, combatZonePanels[1], 1, matMinZ, area.min.z),
+                listXml(mat, combatZonePanels[2], 2, area.max.z, matMaxZ),
+                detailsXml(mat, combatZoneDetailPanels[1], 1, matMinZ, area.min.z),
+                detailsXml(mat, combatZoneDetailPanels[2], 2, area.max.z, matMaxZ) }
+  for side = 1, 2 do
+    for _, column in ipairs(COMBAT_ZONE_COLUMNS) do table.insert(xml, labelXml(mat, side, column)) end
+  end
+  mat.UI.setXml(table.concat(xml))
+  combatZoneText = nil
+  combatZoneDetailText = nil
+  Wait.condition(refreshLists, function() return mat.isDestroyed() or not mat.UI.loading end, 5)
+end
+
+-- the outline, the divider between the sides and the lines between the columns
+local function drawLines()
+  local area = CombatZone_area()
+  local y = area.min.y + 0.02
+  local lines = {
+    {
+      points = {
+        { area.min.x, y, area.min.z },
+        { area.max.x, y, area.min.z },
+        { area.max.x, y, area.max.z },
+        { area.min.x, y, area.max.z },
+      },
+      color = COMBAT_ZONE_LINE_COLOR,
+      thickness = 0.15,
+      loop = true,
+    },
+    {
+      points = { { area.min.x, y, area.center.z }, { area.max.x, y, area.center.z } },
+      color = COMBAT_ZONE_DIVIDER_COLOR,
+      thickness = 0.3,
+    },
+  }
+  local x = area.min.x
+  for i = 1, #COMBAT_ZONE_COLUMNS - 1 do
+    x = x + area.size.x * COMBAT_ZONE_COLUMNS[i].share
+    table.insert(lines, {
+      points = { { x, y, area.min.z }, { x, y, area.max.z } },
+      color = COMBAT_ZONE_LINE_COLOR,
+      thickness = 0.1,
+    })
+  end
+  Global.setVectorLines(lines)
+end
+
+--------------------------------------------------------------------------------
+-- starting a combat
+--
+-- "Start Combat" (a button in each strip) takes the first fight on the board: the first
+-- contested hex (HexState_contested), its last two arrivals, the later one attacking. Both
+-- sides' ships are moved to their side's Combat region, and dice from the dice bags are
+-- put under them. Each side goes on the side of the box nearest its seats where possible.
+--
+-- Layout of a side, as its seats see it: one column per ship type (NPC variant), highest
+-- initiative on the left. Ships are nearest the divider, that type's missile dice
+-- (description "Missile") under them, as they are thrown first, then its cannon dice
+-- after a gap.
+--
+-- While a fight is in the zone, its ships still count in their hex (HexState asks
+-- CombatZone_unitHome), so the hex's arrival order is kept. The buttons then read:
+--   End Combat     the players have moved the losing side's ships to Destroyed or Escaped.
+--                  Destroyed ships go to the right of their player's board (NPCs are
+--                  removed), escaped ones on top of it, and the dice are removed. If the
+--                  sector has another fight, the winner (the side with ships left) stays
+--                  as it is, with its dice and damage cubes (managing them is up to the
+--                  players; the rest are removed); the next side enters the empty half; if not, all
+--                  damage cubes are removed, the winner goes back to the hex and the next
+--                  sector's fight starts. Damage cubes on a ship move with it when the
+--                  zone moves the ship.
+--   Cancel Combat  puts every ship back where it was and removes the dice.
+-- Damage is up to the players.
+--
+--   CombatZone_current = { key, title, attacker, defender, rows = { [side] = 1 or 2 },
+--                          ships = { [guid] = { side, position, rotation } }, dice = { guid } }
+-- Saved in settings.CombatZone.
+
+CombatZone_current = nil
+
+local COMBAT_ZONE_SHIP_GAP = 2.2              -- between ships in a column
+local COMBAT_ZONE_DIE_GAP = 1.1               -- between dice
+local COMBAT_ZONE_BUTTON_SCALE = 0.05         -- about half the size of the Next Round button
+local COMBAT_ZONE_NPC_NAME = { Ancient = "Ancients", Guardian = "Guardians", GCDS = "GCDS" }
+local COMBAT_ZONE_SHIP_RANK = { interceptor = 1, cruiser = 2, dreadnought = 3, starbase = 4, orbital = 4 }
+-- the dice bags for each die colour (two sets on the table; the Rift ones are removed
+-- when the Rift expansion is off)
+local COMBAT_ZONE_DICE_BAGS = {
+  yellow = { '2388bc', '57e8f9' },   -- Ion
+  orange = { '740d72', 'a3c3b3' },   -- Plasma
+  blue   = { 'fe326f', '8ab8d5' },   -- Soliton
+  red    = { '6a7479', '0bea7c' },   -- Antimatter
+  pink   = { '1ec1c3', '79897f' },   -- Rift
+}
+
+-- the hex and side a ship in the current combat belongs to (nil if it isn't in one)
+function CombatZone_unitHome(obj)
+  local combat = CombatZone_current
+  if combat == nil then return nil end
+  local ship = combat.ships[obj.getGUID()]
+  if ship == nil then return nil end
+  return combat.key, ship.side
+end
+
+local function sideName(side)
+  if COMBAT_ZONE_NPC_NAME[side] ~= nil then return COMBAT_ZONE_NPC_NAME[side] end
+  if ATO_isHotseat() then return side end
+  return ATO_name(side)
+end
+
+-- 1 or 2: the side of the box nearest a player's seat (nil for NPCs or without a hand)
+local function seatRow(side)
+  if COMBAT_ZONE_NPC_NAME[side] ~= nil or Player[side] == nil then return nil end
+  local ok, hand = pcall(function() return Player[side].getHandTransform() end)
+  if not ok or hand == nil then return nil end
+  local area = CombatZone_area()
+  return (hand.position.z < area.center.z) and 1 or 2
+end
+
+-- rows[side] for both sides: their seats' row where possible, the defender's first
+local function chooseRows(attacker, defender)
+  local a, d = seatRow(attacker), seatRow(defender)
+  if d ~= nil then return { [defender] = d, [attacker] = 3 - d } end
+  if a ~= nil then return { [attacker] = a, [defender] = 3 - a } end
+  return { [defender] = 1, [attacker] = 2 }
+end
+
+-- a unit's group (ship type or NPC variant) and stats
+local function unitGroup(obj, side)
+  if obj.type == "Tile" and obj.getName() == "Orbital" then
+    return "orbital", ShipState_stats(side, "starbase")
+  end
+  local color, ship = ShipState_shipOf(obj)
+  if color ~= nil then return ship, ShipState_stats(color, ship) end
+  local variant = ShipState_npcOf(obj)
+  if variant ~= nil then return variant, ShipState_npcStats(variant) end
+  return "?", nil
+end
+
+-- a side's units grouped by type, highest initiative first:
+-- { { key, stats, ships = { obj } }, ... }
+local function groupUnits(units, side)
+  local groups, byKey = {}, {}
+  for _, obj in ipairs(units) do
+    local key, stats = unitGroup(obj, side)
+    if byKey[key] == nil then
+      byKey[key] = { key = key, stats = stats, ships = {} }
+      table.insert(groups, byKey[key])
+    end
+    table.insert(byKey[key].ships, obj)
+  end
+  table.sort(groups, function(a, b)
+    local ia = a.stats and a.stats.initiative or 0
+    local ib = b.stats and b.stats.initiative or 0
+    if ia ~= ib then return ia > ib end
+    local ra, rb = COMBAT_ZONE_SHIP_RANK[a.key] or 9, COMBAT_ZONE_SHIP_RANK[b.key] or 9
+    if ra ~= rb then return ra < rb end
+    return a.key < b.key
+  end)
+  return groups
+end
+
+--------------------------------------------------------------------------------
+-- the current combat panel: the fight's ships still in a Combat region, one line per
+-- side and ship type, highest initiative first (the defender first on ties):
+--   Init 3 - Alice: 2x Interceptor (2x Yellow, 2x Orange, +1 Computer)
+--   Init 2 - Bob: 1x Cruiser (1x Orange, -2 Shield, 2 Hull)
+-- Dice are the type's cannon dice in total; missiles are left to the players.
+
+local COMBAT_ZONE_DIE_ORDER = { "yellow", "orange", "blue", "red", "pink" }
+
+local function coloredSideName(side)
+  if COMBAT_ZONE_NPC_NAME[side] ~= nil then return COMBAT_ZONE_NPC_NAME[side] end
+  return "<color=#" .. Color.fromString(side):toHex(false) .. ">" .. sideName(side) .. "</color>"
+end
+
+-- "Interceptor", "Orbital", "Advanced Ancient (Ion)"
+local function groupName(side, key)
+  if key == "orbital" then return "Orbital" end
+  local player = ShipState[side]
+  if player ~= nil and player.ships[key] ~= nil then return player.ships[key].name end
+  if NPC_SHIPS[key] ~= nil then return key end
+  return string.upper(string.sub(key, 1, 1)) .. string.sub(key, 2)
+end
+
+local function groupLine(side, group)
+  local n = #group.ships
+  local stats = group.stats or {}
+  local counts = {}
+  for _, weapon in ipairs(stats.cannons or {}) do
+    counts[weapon.color] = (counts[weapon.color] or 0) + weapon.count * n
+  end
+  local pieces = {}
+  for _, color in ipairs(COMBAT_ZONE_DIE_ORDER) do
+    if counts[color] ~= nil then
+      table.insert(pieces, counts[color] .. "x " .. string.upper(string.sub(color, 1, 1)) .. string.sub(color, 2))
+    end
+  end
+  if #pieces == 0 then table.insert(pieces, "no cannons") end
+  if (stats.computer or 0) > 0 then table.insert(pieces, "+" .. stats.computer .. " Computer") end
+  if (stats.shield or 0) > 0 then table.insert(pieces, "-" .. stats.shield .. " Shield") end
+  if (stats.hull or 0) > 0 then table.insert(pieces, stats.hull .. " Hull") end
+  return "Init " .. (stats.initiative or 0) .. " - " .. coloredSideName(side) .. ": " .. n .. "x " .. groupName(side, group.key)
+    .. " (" .. table.concat(pieces, ", ") .. ")"
+end
+
+function CombatZone_detailsText()
+  local combat = CombatZone_current
+  if combat == nil then return "<b>Current combat</b>\n\nNo combat in the zone." end
+  local units = {}
+  for guid, ship in pairs(combat.ships) do
+    local obj = getObjectFromGUID(guid)
+    if obj ~= nil then
+      local _, region = CombatZone_regionAt(obj.getPosition())
+      if region == "combat" then
+        units[ship.side] = units[ship.side] or {}
+        table.insert(units[ship.side], obj)
+      end
+    end
+  end
+  local rows = {}
+  for _, side in ipairs({ combat.defender, combat.attacker }) do
+    for _, group in ipairs(groupUnits(units[side] or {}, side)) do
+      table.insert(rows, { side = side, group = group,
+                           initiative = group.stats and group.stats.initiative or 0 })
+    end
+  end
+  -- highest initiative first; the defender wins ties (stable: defender rows came first)
+  for i = 2, #rows do
+    local row, j = rows[i], i - 1
+    while j >= 1 and rows[j].initiative < row.initiative do
+      rows[j + 1] = rows[j]
+      j = j - 1
+    end
+    rows[j + 1] = row
+  end
+  local lines = { "<b>" .. combat.title .. "</b>: " .. coloredSideName(combat.attacker)
+                  .. " attacks " .. coloredSideName(combat.defender), "" }
+  for _, row in ipairs(rows) do table.insert(lines, groupLine(row.side, row.group)) end
+  if #rows == 0 then table.insert(lines, "No ships in Combat.") end
+  return table.concat(lines, "\n")
+end
+
+-- damage cubes: on one ship, or anywhere on the mat
+local function isDamageCube(obj)
+  return obj ~= nil and obj.type ~= "Infinite" and obj.getName() == "Damage Cube"
+end
+
+local function cubesIn(center, size)
+  local cubes = {}
+  for _, hit in ipairs(Physics.cast({ origin = center, direction = Vector(0, 1, 0), type = 3,
+                                      size = size, max_distance = 0 })) do
+    if isDamageCube(hit.hit_object) then table.insert(cubes, hit.hit_object) end
+  end
+  return cubes
+end
+
+local function cubesOn(obj)
+  local bounds = obj.getBounds()
+  local top = bounds.center.y + bounds.size.y / 2
+  return cubesIn(Vector(bounds.center.x, top + 1, bounds.center.z),
+                 Vector(bounds.size.x, 2.5, bounds.size.z))
+end
+
+-- move a ship by script, with the damage cubes lying on it
+local function moveShip(obj, target)
+  local delta = target - obj.getPosition()
+  for _, cube in ipairs(cubesOn(obj)) do
+    cube.setPositionSmooth(cube.getPosition() + delta + Vector(0, 0.3, 0), false, true)
+  end
+  obj.setPositionSmooth(target, false, true)
+end
+
+-- remove the damage cubes on the mat, except those in keepRow's Combat region (nil:
+-- remove them all; cubes in Destroyed or Escaped always go)
+local function removeCubes(keepRow)
+  local mat = CombatZone_mat()
+  if mat == nil then return end
+  local bounds = mat.getBounds()
+  local top = bounds.center.y + bounds.size.y / 2
+  for _, cube in ipairs(cubesIn(Vector(bounds.center.x, top + 3, bounds.center.z),
+                                Vector(bounds.size.x, 6, bounds.size.z))) do
+    local row, region = CombatZone_regionAt(cube.getPosition())
+    if not (keepRow ~= nil and row == keepRow and region == "combat") then cube.destruct() end
+  end
+end
+
+local function diceBag(color)
+  for _, guid in ipairs(COMBAT_ZONE_DICE_BAGS[color] or {}) do
+    local bag = getObjectFromGUID(guid)
+    if bag ~= nil then return bag end
+  end
+  return nil
+end
+
+-- dice of a weapon list for n ships, one entry per die: { color, ... }
+local function diceList(weapons, n)
+  local dice = {}
+  for _, weapon in ipairs(weapons or {}) do
+    for _ = 1, weapon.count * n do table.insert(dice, weapon.color) end
+  end
+  return dice
+end
+
+-- lay out one side in its row's Combat region; records the ships and dice in combat.
+-- stay: the side won the fight before in this sector; its ships, dice and damage cubes
+-- stay as they are (managing them is up to the players).
+local function placeSide(combat, side, units, stay)
+  local row = combat.rows[side]
+  local region = CombatZone_region(row, "combat")
+  local groups = groupUnits(units, side)
+  -- u: along the seats' reading direction from their left; v: from the divider to the seats
+  local leftToRight = (row == 1) and 1 or -1
+  local function at(u, v, lift)
+    local x = (leftToRight == 1) and (region.min.x + u) or (region.max.x - u)
+    local z = (row == 1) and (region.max.z - v) or (region.min.z + v)
+    return Vector(x, region.min.y + lift, z)
+  end
+  local columnWidth = region.size.x / math.max(1, #groups)
+
+  -- a grid of n items, gap apart, centred in the strip from u0, width wide, starting v
+  -- from the divider; returns the positions and the depth it takes
+  local function grid(u0, width, n, gap, v, lift)
+    local perRow = math.max(1, math.floor(width / gap))
+    local used = math.min(n, perRow) * gap
+    local positions = {}
+    for i = 0, n - 1 do
+      local u = u0 + (width - used) / 2 + (i % perRow + 0.5) * gap
+      table.insert(positions, at(u, v + (math.floor(i / perRow) + 0.5) * gap, lift))
+    end
+    return positions, math.ceil(n / perRow) * gap
+  end
+
+  for c, group in ipairs(groups) do
+    for _, obj in ipairs(group.ships) do
+      -- where it came from (a ship staying for the sector's next fight keeps its record)
+      if combat.ships[obj.getGUID()] == nil then
+        local position, rotation = obj.getPosition(), obj.getRotation()
+        combat.ships[obj.getGUID()] = {
+          side = side,
+          position = { position.x, position.y, position.z },
+          rotation = { rotation.x, rotation.y, rotation.z },
+        }
+      end
+    end
+    -- the winner of the fight before: its ships, dice and cubes are left as they are
+    if not stay then
+      local u0, width, v = (c - 1) * columnWidth, columnWidth, 0.4
+      local positions, depth = grid(u0, width, #group.ships, COMBAT_ZONE_SHIP_GAP, v, 0.8)
+      for i, obj in ipairs(group.ships) do moveShip(obj, positions[i]) end
+      v = v + depth + 0.3
+
+      local stats = group.stats or {}
+      local n = #group.ships
+      for _, kind in ipairs({ "missiles", "cannons" }) do
+        local dice = diceList(stats[kind], n)
+        if #dice > 0 then
+          local spots, diceDepth = grid(u0, width, #dice, COMBAT_ZONE_DIE_GAP, v, 1)
+          for i, color in ipairs(dice) do
+            local bag = diceBag(color)
+            if bag ~= nil then
+              local die = bag.takeObject({ position = spots[i], rotation = { 0, 0, 0 }, smooth = false })
+              if die ~= nil then
+                table.insert(combat.dice, die.getGUID())
+                if kind == "missiles" then die.setDescription("Missile") end
+              end
+            end
+          end
+          v = v + diceDepth + 0.6
+        end
+      end
+    end
+  end
+end
+
+local function hexTitleOf(hex)
+  if hex.number ~= nil then return string.format("Sector %03d", hex.number) end
+  return hex.tile.getName()
+end
+
+local createButtons   -- defined below; the buttons change with the combat state
+
+-- remove the combat's dice, except those in keepRow's Combat region (nil: all; dice in
+-- Destroyed or Escaped always go); the kept ones stay in combat.dice
+local function removeDice(combat, keepRow)
+  local kept = {}
+  for _, guid in ipairs(combat.dice) do
+    local die = getObjectFromGUID(guid)
+    if die ~= nil then
+      local row, region = CombatZone_regionAt(die.getPosition())
+      if keepRow ~= nil and row == keepRow and region == "combat" then
+        table.insert(kept, guid)
+      else
+        die.destruct()
+      end
+    end
+  end
+  combat.dice = kept
+end
+
+-- true if one of the combat's ships belongs to side
+local function hasShips(combat, side)
+  for _, ship in pairs(combat.ships) do
+    if ship.side == side then return true end
+  end
+  return false
+end
+
+-- put a ship back where it was on the board, at once (not smoothly: a ship in the air
+-- would briefly count in no hex)
+local function sendHome(obj, ship)
+  obj.setRotation(ship.rotation)
+  obj.setPosition(ship.position)
+end
+
+-- the n-th spot (0 based) of a grid beside or on a player's board, rows from its top
+-- edge down; across(size, col) gives the spot's offset along the board's width from its
+-- centre (world units, board-local direction)
+local function boardSpot(board, across, n)
+  local size = board.getBoundsNormalized().size
+  local scale = board.getScale()
+  local perRow = 4
+  local col, row = n % perRow, math.floor(n / perRow)
+  local x = across(size, col)
+  local z = -size.z / 2 + 1.5 + row * COMBAT_ZONE_SHIP_GAP
+  local spot = board.positionToWorld(Vector(x / scale.x, 0, z / scale.z))
+  spot.y = board.getPosition().y + 1.5
+  return spot
+end
+
+-- destroyed: to the right of the player's board (local x is mirrored against the board
+-- image, so the image's right is local -x); NPC ships are removed
+local function toDestroyed(obj, ship, placed)
+  local board = PlayerState_board(ship.side)
+  if board == nil then
+    if COMBAT_ZONE_NPC_NAME[ship.side] ~= nil then obj.destruct() end
+    return
+  end
+  local n = placed[ship.side] or 0
+  placed[ship.side] = n + 1
+  obj.setPosition(boardSpot(board, function(size, col)
+    return -(size.x / 2 + 1.5 + col * COMBAT_ZONE_SHIP_GAP)
+  end, n))
+end
+
+-- escaped: on top of the player's board, to be placed where they retreat to; NPCs can't
+-- retreat, so an NPC ship put here goes back to its hex
+local function toEscaped(obj, ship, placed)
+  local board = PlayerState_board(ship.side)
+  if board == nil then
+    sendHome(obj, ship)
+    return
+  end
+  local n = placed[ship.side] or 0
+  placed[ship.side] = n + 1
+  obj.setPosition(boardSpot(board, function(size, col)
+    return (col - 1.5) * COMBAT_ZONE_SHIP_GAP
+  end, n))
+end
+
+-- move a fight's two sides into the zone; a side that is already there (the winner of
+-- the fight before: the side with ships left) keeps its row, and its ships stay where they
+-- are
+local function beginFight(hex, previous)
+  local order = hex.sides
+  local attacker, defender = order[#order], order[#order - 1]
+  local combat = {
+    key = hex.key, title = hexTitleOf(hex), attacker = attacker, defender = defender,
+    ships = previous and previous.ships or {}, dice = previous and previous.dice or {},
+  }
+  local kept = nil
+  if previous ~= nil then
+    if hasShips(previous, attacker) then kept = attacker elseif hasShips(previous, defender) then kept = defender end
+  end
+  if kept ~= nil then
+    local other = (kept == attacker) and defender or attacker
+    combat.rows = { [kept] = previous.rows[kept], [other] = 3 - previous.rows[kept] }
+  else
+    combat.rows = chooseRows(attacker, defender)
+  end
+  CombatZone_current = combat
+  placeSide(combat, defender, hex.units[defender], defender == kept)
+  placeSide(combat, attacker, hex.units[attacker], attacker == kept)
+  createButtons(CombatZone_mat())
+  Wait.time(CombatZone_refresh, 1.5)   -- once the ships have arrived
+  broadcastToAll(string.format("Combat in %s: %s attacks %s.", combat.title,
+    sideName(attacker), sideName(defender)), { 1, 0.8, 0.4 })
+end
+
+-- start the first fight on the board (nothing if one is in the zone already)
+function CombatZone_start(after)
+  if CombatZone_current ~= nil then return end
+  local hex = HexState_contested()[1]
+  if hex == nil then
+    broadcastToAll(after and "All combats are over." or "No combats on the board.", { 0.7, 0.9, 1 })
+    return
+  end
+  beginFight(hex, nil)
+end
+
+-- End Combat. The players have moved the losing side's ships to Destroyed or Escaped
+-- (either side's). Destroyed ships go to the right of their player's board (NPCs are
+-- removed), escaped ships on top of it; the dice are removed. If the sector has another
+-- fight, the winner stays in the zone and the next side enters the empty half. If not,
+-- the ships still in Combat go back to their hex, and the next sector's fight starts.
+function CombatZone_end()
+  local combat = CombatZone_current
+  if combat == nil then return end
+
+  local inCombat, moves = {}, {}
+  for guid, ship in pairs(combat.ships) do
+    local obj = getObjectFromGUID(guid)
+    local region = nil
+    if obj ~= nil then
+      local _
+      _, region = CombatZone_regionAt(obj.getPosition())
+      if region == "combat" then inCombat[ship.side] = true end
+    end
+    table.insert(moves, { guid = guid, obj = obj, ship = ship, region = region })
+  end
+  if inCombat[combat.attacker] and inCombat[combat.defender] then
+    broadcastToAll("Both sides still have ships in Combat: move the losing side's ships to "
+      .. "Destroyed or Escaped first.", { 1, 0.5, 0.4 })
+    return
+  end
+
+  local destroyed, escaped = {}, {}
+  for _, move in ipairs(moves) do
+    if move.obj == nil then
+      combat.ships[move.guid] = nil
+    elseif move.region == "destroyed" then
+      combat.ships[move.guid] = nil
+      toDestroyed(move.obj, move.ship, destroyed)
+    elseif move.region == "escaped" then
+      combat.ships[move.guid] = nil
+      toEscaped(move.obj, move.ship, escaped)
+    elseif move.region ~= "combat" then
+      combat.ships[move.guid] = nil   -- taken out of the zone by hand: it counts where it lies
+    end
+  end
+
+  -- the hex without the ships that left it: its next fight, if any, is its last two sides.
+  -- The winner (the side with ships left) keeps its dice and damage cubes into that fight
+  -- (managing them is up to the players); every other die and cube on the mat goes.
+  -- After the sector's last fight, all go.
+  local hex = HexState_hex(combat.key)
+  if hex ~= nil and hex.contested and #hex.sides >= 2 then
+    local winner = hasShips(combat, combat.attacker) and combat.attacker
+                   or hasShips(combat, combat.defender) and combat.defender or nil
+    local keepRow = winner and combat.rows[winner]
+    removeDice(combat, keepRow)
+    removeCubes(keepRow)
+    beginFight(hex, combat)
+    return
+  end
+  removeDice(combat)
+  removeCubes(nil)
+
+  for guid, ship in pairs(combat.ships) do
+    local obj = getObjectFromGUID(guid)
+    if obj ~= nil then sendHome(obj, ship) end
+  end
+  CombatZone_current = nil
+  HexState_all()   -- reconcile now that the ships are back (this refreshes the panels)
+  broadcastToAll("Combat in " .. combat.title .. " is over.", { 0.7, 0.9, 1 })
+  createButtons(CombatZone_mat())
+  CombatZone_start(true)
+end
+
+-- Cancel Combat: put every ship of the current fight back where it was, remove the dice
+function CombatZone_cancel()
+  local combat = CombatZone_current
+  if combat == nil then return end
+  for guid, ship in pairs(combat.ships) do
+    local obj = getObjectFromGUID(guid)
+    if obj ~= nil then sendHome(obj, ship) end
+  end
+  removeDice(combat)
+  CombatZone_current = nil
+  createButtons(CombatZone_mat())
+  CombatZone_refresh()
+  broadcastToAll("Combat in " .. combat.title .. " cancelled: the ships are back on the board.", { 0.7, 0.9, 1 })
+end
+
+-- the buttons (function_owner is Global); a short lockout against double clicks
+local combatZoneLockout = false
+local function clicked(altClick, action)
+  if combatZoneLockout or altClick then return end
+  combatZoneLockout = true
+  Wait.time(function() combatZoneLockout = false end, 2)
+  action()
+end
+function CombatZone_onStart(obj, color, altClick) clicked(altClick, CombatZone_start) end
+function CombatZone_onEnd(obj, color, altClick) clicked(altClick, CombatZone_end) end
+function CombatZone_onCancel(obj, color, altClick) clicked(altClick, CombatZone_cancel) end
+
+-- in each strip, in the half the list leaves free, next to the combat area: Start Combat,
+-- or End Combat and Cancel Combat side by side while a fight is in the zone
+createButtons = function(mat)
+  if mat == nil then return end
+  mat.clearButtons()
+  local bounds = mat.getBounds()
+  local area = CombatZone_area()
+  local stripWidth = bounds.size.x - 2 * COMBAT_ZONE_UI_INSET
+  local listWidth = stripWidth * COMBAT_ZONE_LIST_WIDTH
+  local buttons
+  if CombatZone_current == nil then
+    buttons = { { "Start Combat", "CombatZone_onStart", 0, "Move the next fight's ships here, with their dice" } }
+  else
+    local title = CombatZone_current.title
+    buttons = {
+      { "End Combat", "CombatZone_onEnd", -3,
+        "Send Destroyed and Escaped ships to their players, then the next fight" },
+      { "Cancel Combat", "CombatZone_onCancel", 3, "Put the ships of " .. title .. " back and remove the dice" },
+    }
+  end
+  for side = 1, 2 do
+    local reading = readingDirection(side)
+    local centre = bounds.center.x + reading * (stripWidth - listWidth) / 2
+    local z = (side == 1) and (area.min.z - 2) or (area.max.z + 2)
+    for _, button in ipairs(buttons) do
+      local here = mat.positionToLocal(Vector(centre + reading * button[3], bounds.center.y, z))
+      mat.createButton({
+        click_function = button[2],
+        function_owner = Global,
+        label = button[1],
+        tooltip = button[4],
+        position = { here.x, 0.15, here.z },
+        -- the text's top points away from side's seats (checked in TTS)
+        rotation = { 0, (side == 1) and 270 or 90, 0 },
+        scale = { COMBAT_ZONE_BUTTON_SCALE, 1, COMBAT_ZONE_BUTTON_SCALE },
+        width = 2800,
+        height = 850,
+        font_size = 380,
+      })
+    end
+  end
+end
+
+function CombatZone_save()
+  return CombatZone_current
+end
+
+-- on load, before HexState_restore (the ships in a combat count in their hex)
+function CombatZone_restore(saved)
+  CombatZone_current = (type(saved) == "table" and saved.ships ~= nil) and saved or nil
+end
+
+-- the Damage Cubes bags: one in each strip, at the reader's right end of the button row.
+-- Dropped a little above the mat (it lies lower than the table) and locked once at rest.
+local function placeDamageBags(mat)
+  local bounds = mat.getBounds()
+  local area = CombatZone_area()
+  local stripWidth = bounds.size.x - 2 * COMBAT_ZONE_UI_INSET
+  local listWidth = stripWidth * COMBAT_ZONE_LIST_WIDTH
+  local top = bounds.center.y + bounds.size.y / 2
+  for side, guid in ipairs(COMBAT_ZONE_DAMAGE_BAGS) do
+    local bag = getObjectFromGUID(guid)
+    if bag ~= nil then
+      local reading = readingDirection(side)
+      local x = bounds.center.x + reading * (stripWidth / 2 - 1.2)
+      local z = (side == 1) and (area.min.z - 2) or (area.max.z + 2)
+      local spot = Vector(x, top + 1, z)
+      if (bag.getPosition() - spot):magnitude() > 1.5 then
+        bag.setLock(false)
+        bag.setRotation({ 0, 0, 0 })
+        bag.setPosition(spot)
+        Wait.condition(function() if not bag.isDestroyed() then bag.setLock(true) end end,
+          function() return bag.isDestroyed() or bag.resting end, 5,
+          function() if not bag.isDestroyed() then bag.setLock(true) end end)
+      end
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- showing the zone
+
+-- name the mat, draw the lines and the UI; called once race selection is over, and on load
+function CombatZone_show()
+  local mat = CombatZone_mat()
+  if mat == nil then return end
+  mat.setName("Combat Zone")
+  mat.setDescription("Contested ships are fought out here.")
+  combatZoneShown = true
+  showUI(mat)
+  drawLines()
+  createButtons(mat)
+  placeDamageBags(mat)
+end

@@ -260,10 +260,12 @@ function onSave()
   settings.ATOState = ATO
   settings.PlayerState = PlayerState
   settings.HexState = HexState_save()
+  settings.CombatZone = CombatZone_save()
   local data = JSON.encode(settings)
   settings.ATOState = nil
   settings.PlayerState = nil
   settings.HexState = nil
+  settings.CombatZone = nil
   return data
 end
 
@@ -310,6 +312,9 @@ function onLoad(saveData)
     -- hex state (arrival order) is saved, and checked against the ships once they're marked
     local savedHexes = saved and saved.HexState
     settings.HexState = nil
+    -- a combat in the combat zone: its ships still count in their hex
+    CombatZone_restore(saved and saved.CombatZone)
+    settings.CombatZone = nil
     Wait.time(function()
       ShipState_restore()
       HexState_restore(savedHexes)
@@ -338,6 +343,9 @@ function onLoad(saveData)
           object.setPosition({position.x, -2, position.z}) end
       end
     end
+
+    -- the race selection mat is the combat zone once race selection is over
+    if raceSelectionDone() then CombatZone_show() end
 
     ATO_updateUI()
     ATO_resume()
@@ -681,10 +689,10 @@ function setInteractivity(isInteractable)
 end
 
 
--- after all factions are selected: remove the selection buttons, the selection mat and
--- the faction display tiles (they are not used after faction selection)
+-- after all factions are selected: remove the selection buttons and the faction display
+-- tiles (they are not used after faction selection). The selection mat (ac4050) stays:
+-- it becomes the combat zone (scripts/include/CombatZone.ttslua).
 local RaceSelection_GUIDs = {
-  'ac4050', -- faction selection mat
   -- faction display tiles (by column: Eridani, Terran Red, Planta, ...)
   '4f1d06', '9157e7', 'dece33', 'ffd31a',
   'd776b2', '57de7f', 'a7d9af', '81e0b9',
@@ -701,6 +709,15 @@ function hideRaceSelection()
       if object ~= nil then object.destruct() end
     end
   end
+  CombatZone_show()
+end
+
+-- true once hideRaceSelection has removed the faction display tiles
+function raceSelectionDone()
+  for _, GUID in ipairs(RaceSelection_GUIDs) do
+    if getObjectFromGUID(GUID) ~= nil then return false end
+  end
+  return true
 end
 
 -- number of players that have selected a faction
@@ -2669,6 +2686,7 @@ end
 #include ShipData
 #include ShipState
 #include HexState
+#include CombatZone
 
 
 --------------------------------------------------------------------------------
