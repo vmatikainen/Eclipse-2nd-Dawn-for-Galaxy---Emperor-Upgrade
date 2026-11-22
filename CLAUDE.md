@@ -331,7 +331,8 @@ Both live in include files (`scripts/include/`, pulled into Global with `#includ
   - `ShipState_init(color, faction)` copies the race's blueprints to the player. It's
     called by `PlayerSetup`.
   - When a ship part tile (or ancient Discovery tile) is dropped on a blueprint slot of a
-    player's board, it's recorded in that slot (`placed[cell]`).
+    player's board, it's recorded in that slot (`placed[cell]`). A recorded tile is centred on
+    its snap point and turned to the board's rotation (`ShipState_align`).
   - Picking it up or deleting it removes it, so the printed default counts again.
   - Muon Source is only accepted on the Muon Source spot, and nothing else there. Stacked
     tiles and tiles on `Unused` placeholders aren't counted.
