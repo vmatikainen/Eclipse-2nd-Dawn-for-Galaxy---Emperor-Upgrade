@@ -259,9 +259,11 @@ end
 function onSave()
   settings.ATOState = ATO
   settings.PlayerState = PlayerState
+  settings.HexState = HexState_save()
   local data = JSON.encode(settings)
   settings.ATOState = nil
   settings.PlayerState = nil
+  settings.HexState = nil
   return data
 end
 
@@ -304,10 +306,17 @@ function onLoad(saveData)
     settings.PlayerState = nil
     -- faction picks still waiting for the seats to be randomized
     SEAT_restore()
-    -- ship state isn't saved: rebuild it from the races and the tiles on the boards
-    Wait.time(ShipState_restore, 1)
+    -- ship state isn't saved: rebuild it from the races and the tiles on the boards;
+    -- hex state (arrival order) is saved, and checked against the ships once they're marked
+    local savedHexes = saved and saved.HexState
+    settings.HexState = nil
+    Wait.time(function()
+      ShipState_restore()
+      HexState_restore(savedHexes)
+    end, 1)
     addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
     addContextMenuItem("Show NPC ships", function(player_color) ShipState_npcReport(player_color) end)
+    addContextMenuItem("Show combats", function(player_color) HexState_report(player_color) end)
 
     updateGameStateBasedOnSettings()
     shuffleEverything()
@@ -1515,6 +1524,7 @@ end
 -- Stop players from accidentally taking a stack of techs --
 function onObjectPickUp(player, obj)
     ShipState_onPickUp(obj)
+    HexState_onPickUp(obj)
     if obj.tag == "Chip" and obj.getQuantity() > 1 then
         if string.find(obj.getName(), "Tech %-") != nil then
             obj.drop()
@@ -1547,14 +1557,17 @@ function onObjectDrop(_, obj)
     watchSector(obj)
     stopSectorWatchUnder(obj)
     ShipState_onDrop(obj)
+    HexState_onDrop(obj)
 end
 
 function onObjectDestroy(obj)
     ShipState_onDestroy(obj)
+    HexState_onDestroy(obj)
 end
 
 function onObjectSpawn(obj)
     ShipState_onSpawn(obj)
+    HexState_onSpawn(obj)
 end
 
 
@@ -1619,7 +1632,7 @@ end
 
 function watchSector(obj)
   if not settings.setupCompleted or not isSectorTile(obj) then return end
-  if SectorContents[obj.getDescription()] == nil then return end
+  if SectorContents[HexState_baseDescription(obj)] == nil then return end
   if isSectorPopulated(obj.getGUID()) then return end
   WatchedSectors[obj.getGUID()] = true
   if SectorWatchTimer == nil then
@@ -1655,7 +1668,8 @@ function findShipSource(tag)
 end
 
 function populateSector(sector)
-  local contents = SectorContents[sector.getDescription()]
+  local number = HexState_baseDescription(sector)   -- without HexState's combat tooltip
+  local contents = SectorContents[number]
   settings.PopulatedSectors = settings.PopulatedSectors or {}
   table.insert(settings.PopulatedSectors, sector.getGUID())
 
@@ -1668,7 +1682,7 @@ function populateSector(sector)
       rotation = {180, yaw, 0},
       smooth = false })
   else
-    broadcastToAll("No discovery tiles left for sector " .. sector.getDescription(), {1, 0.5, 0})
+    broadcastToAll("No discovery tiles left for sector " .. number, {1, 0.5, 0})
   end
 
   local ships = contents.ancients or contents.guardians or 0
@@ -1676,7 +1690,7 @@ function populateSector(sector)
   local tag = contents.ancients and "Ancient" or "Guardian"
   local source = findShipSource(tag)
   if source == nil then
-    broadcastToAll("Could not find the " .. tag .. " ships to place on sector " .. sector.getDescription(), {1, 0.5, 0})
+    broadcastToAll("Could not find the " .. tag .. " ships to place on sector " .. number, {1, 0.5, 0})
     return
   end
   -- two ships are stacked, the top one shifted slightly so both stay visible
@@ -2654,6 +2668,7 @@ end
 --------------------------------------------------------------------------------
 #include ShipData
 #include ShipState
+#include HexState
 
 
 --------------------------------------------------------------------------------
