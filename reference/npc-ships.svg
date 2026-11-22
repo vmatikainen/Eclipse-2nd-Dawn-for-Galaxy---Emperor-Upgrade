@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 720" width="1500" height="720">
+<rect width="100%" height="100%" fill="#222"/>
+<text x="20" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#fff">NPC ships: Ancients, Guardians, GCDS (9 variants)</text>
+<svg x="40" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135618712/F1E66BC907F805054FFE58432E8C08A4E7300938/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ancient</text>
+<text x="150" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 yellow dice (1 dmg) · init +2 ·</text>
+<text x="150" y="362" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +1 · hull 1</text>
+<svg x="340" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135609593/3A60DEEA0EE58B398EB7D9C983F47458E330941F/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Advanced Ancient (Ion)</text>
+<text x="450" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 yellow die (1 dmg) · init +3 ·</text>
+<text x="450" y="362" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +2 · hull 1</text>
+<svg x="640" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135609165/C31794E9753FBD0E7063D05B240096A4420AAFDF/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Advanced Ancient (Plasma)</text>
+<text x="750" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 orange die (2 dmg) · init +1 ·</text>
+<text x="750" y="362" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +1 · hull 2</text>
+<svg x="940" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135618892/2E8B1EC497A40190CD5724FE2A68521792C3CF40/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Guardian</text>
+<text x="1050" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">3 yellow dice (1 dmg) · init +3 ·</text>
+<text x="1050" y="362" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +2 · hull 2</text>
+<svg x="1240" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135607977/DDE5DAC915ACC322DFC228FCEDE0BE6B9D5D1960/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1350" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Advanced Guardian (Plasma)</text>
+<text x="1350" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 orange dice (2 dmg) · init +2 ·</text>
+<text x="1350" y="362" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +1 · shield 1 · hull 3</text>
+<svg x="40" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135608755/2FC0F174782D2038AF7FC4B99E15ED4913B23B56/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Advanced Guardian (Missiles)</text>
+<text x="150" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 orange missiles (2 dmg) · 1 red</text>
+<text x="150" y="692" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">die (4 dmg) · init +1 · computer</text>
+<text x="150" y="712" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">+1 · hull 3</text>
+<svg x="340" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135606311/1CCB957B93BEBD324A7AE18113C77DD76AC9934E/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">GCDS</text>
+<text x="450" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">4 yellow dice (1 dmg) · init 0 ·</text>
+<text x="450" y="692" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +2 · hull 7</text>
+<svg x="640" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135608356/2965AB26205340CD66280D29C1BE2F6EF62524B5/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Advanced GCDS (Plasma)</text>
+<text x="750" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">2 orange dice (2 dmg) · init +3 ·</text>
+<text x="750" y="692" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">computer +2 · shield 2 · hull 4</text>
+<svg x="940" y="400" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135607313/0D7676C5D38F627FB672FB28DD6670F5E08ACF81/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="648" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Advanced GCDS (Missiles)</text>
+<text x="1050" y="672" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">4 yellow missiles (1 dmg) · 1 red</text>
+<text x="1050" y="692" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">die (4 dmg) · init +2 · computer</text>
+<text x="1050" y="712" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">+2 · hull 3</text>
+</svg>

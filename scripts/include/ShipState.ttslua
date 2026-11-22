@@ -14,6 +14,10 @@
 -- Not saved: on load it is rebuilt from PlayerState and the tiles on the boards.
 -- Read it through ShipState_stats(color, ship) and ShipState_effectiveParts(color, ship).
 --
+-- NPC ships (Ancients, Guardians, GCDS) have no blueprint to upgrade: their stats come
+-- from NPC_SHIPS, picked by the miniature's texture. ShipState_statsOf(obj) gives the stats
+-- of any ship miniature, player or NPC, in the same shape.
+--
 -- Ship miniatures: PlaceShip marks each player ship with memo "Ship <Color> <ship>" (e.g.
 -- "Ship Red interceptor"). Its name is "Red - Interceptor" and its description (the tooltip)
 -- is the ship's current stats, rewritten whenever that ship's blueprint changes.
@@ -119,6 +123,7 @@ function ShipState_restore()
   restoring = false
   ShipState_markOldShips()
   ShipState_updateTooltips()
+  for _, obj in ipairs(getAllObjects()) do ShipState_markNpc(obj) end
 end
 
 --------------------------------------------------------------------------------
@@ -296,8 +301,8 @@ local function diceText(list)
 end
 
 -- one line, e.g. "Init 2, cannons 1 yellow, computer +1, shield 0, hull 1, move 1, energy 1 left"
-function ShipState_summary(color, ship)
-  local stats = ShipState_stats(color, ship)
+-- (NPCs leave out move and energy)
+local function summaryText(stats, ship)
   if stats == nil then return "" end
   local pieces = { "Init " .. stats.initiative }
   if #stats.missiles > 0 then table.insert(pieces, "missiles " .. diceText(stats.missiles)) end
@@ -305,11 +310,17 @@ function ShipState_summary(color, ship)
   table.insert(pieces, "computer +" .. stats.computer)
   table.insert(pieces, "shield " .. stats.shield)
   table.insert(pieces, "hull " .. stats.hull)
-  if ship ~= "starbase" then table.insert(pieces, "move " .. stats.movement) end
-  table.insert(pieces, string.format("energy %d left", stats.energy))
+  if stats.npc == nil then
+    if ship ~= "starbase" then table.insert(pieces, "move " .. stats.movement) end
+    table.insert(pieces, string.format("energy %d left", stats.energy))
+  end
   local text = table.concat(pieces, ", ")
   if #stats.warnings > 0 then text = text .. " (" .. table.concat(stats.warnings, "; ") .. ")" end
   return text
+end
+
+function ShipState_summary(color, ship)
+  return summaryText(ShipState_stats(color, ship), ship)
 end
 
 -- every ship of a color, for the "Show my ships" menu item
@@ -345,9 +356,9 @@ local function shipName(color, ship)
   return string.upper(string.sub(ship, 1, 1)) .. string.sub(ship, 2)
 end
 
--- tooltip text: one fact per line
-function ShipState_tooltip(color, ship)
-  local stats = ShipState_stats(color, ship)
+-- tooltip text from stats, one fact per line. ship = SHIP_TYPES entry (unused for NPCs,
+-- which have no movement or energy)
+local function tooltipText(stats, ship)
   if stats == nil then return "" end
   local function dice(list)
     local pieces = {}
@@ -362,16 +373,22 @@ function ShipState_tooltip(color, ship)
   if #stats.cannons > 0 then table.insert(lines, "Cannons: " .. dice(stats.cannons)) end
   table.insert(lines, string.format("Computer +%d   Shield %d   Hull %d", stats.computer, stats.shield, stats.hull))
   local energy = string.format("Energy %d/%d used", stats.energyUsed, stats.energyProduced)
-  if ship ~= "starbase" then
-    table.insert(lines, (stats.jump and "Jump drive" or ("Movement " .. stats.movement)) .. "   " .. energy)
-  else
-    table.insert(lines, energy)
+  if stats.npc == nil then
+    if ship ~= "starbase" then
+      table.insert(lines, (stats.jump and "Jump drive" or ("Movement " .. stats.movement)) .. "   " .. energy)
+    else
+      table.insert(lines, energy)
+    end
   end
   if stats.regenerate then table.insert(lines, "Repairs 1 damage each round") end
   for _, warning in ipairs(stats.warnings) do
     table.insert(lines, "[ff6666]Warning: " .. warning .. "[-]")
   end
   return table.concat(lines, "\n")
+end
+
+function ShipState_tooltip(color, ship)
+  return tooltipText(ShipState_stats(color, ship), ship)
 end
 
 -- mark a new player ship miniature (called by PlaceShip); other types (shrines, ...) are left alone
@@ -409,7 +426,74 @@ function ShipState_updateTooltips(color, ship)
 end
 
 --------------------------------------------------------------------------------
--- events (called from Global's onObjectDrop / onObjectPickUp / onObjectDestroy)
+-- NPC ships: Ancients, Guardians and the GCDS. They can't be upgraded, so their state is
+-- the variant setup put on the table (NPC_SHIPS in ShipData), told apart by texture.
+-- Their miniatures (and the Ancient / Guardian stock bags) get the stats as tooltip.
+
+-- the NPC_SHIPS variant an object is (a miniature or the bag it comes from), or nil
+function ShipState_npcOf(obj)
+  if obj.type ~= "Generic" and obj.type ~= "Infinite" then return nil end
+  local custom = obj.getCustomObject()
+  return custom and NPC_TEXTURES[custom.diffuse] or nil
+end
+
+-- same shape as ShipState_stats, plus npc = "ancient" / "guardian" / "gcds" and name
+function ShipState_npcStats(variant)
+  local data = NPC_SHIPS[variant]
+  if data == nil then return nil end
+  local stats = {
+    npc = data.npc, name = variant,
+    initiative = data.initiative or 0, computer = data.computer or 0, shield = data.shield or 0,
+    hull = data.hull or 0, movement = 0, energy = 0, energyProduced = 0, energyUsed = 0,
+    cannons = {}, missiles = {}, parts = {}, warnings = {},
+  }
+  addDice(stats.cannons, data.cannons)
+  addDice(stats.missiles, data.missiles)
+  return stats
+end
+
+-- stats of any ship miniature on the table: a player ship (its blueprint now) or an NPC
+-- ship. Returns stats, owner (player color or "NPC"); nil if obj isn't a ship.
+function ShipState_statsOf(obj)
+  local color, ship = ShipState_shipOf(obj)
+  if color ~= nil then return ShipState_stats(color, ship), color end
+  local variant = ShipState_npcOf(obj)
+  if variant ~= nil then return ShipState_npcStats(variant), "NPC" end
+  return nil
+end
+
+-- name a miniature after its variant and put its stats in the tooltip (bags keep their name)
+function ShipState_markNpc(obj)
+  local variant = ShipState_npcOf(obj)
+  if variant == nil then return end
+  local text = tooltipText(ShipState_npcStats(variant))
+  if obj.type ~= "Infinite" and obj.getName() ~= variant then obj.setName(variant) end
+  if obj.getDescription() ~= text then obj.setDescription(text) end
+end
+
+-- the NPC variants on the table, for the "Show NPC ships" menu item
+function ShipState_npcReport(color)
+  local found = {}
+  for _, obj in ipairs(getAllObjects()) do
+    local variant = ShipState_npcOf(obj)
+    if variant ~= nil then found[variant] = true end
+  end
+  if next(found) == nil then
+    printToColor("No NPC ships on the table yet (setup puts them out).", color, {1, 0.4, 0.4})
+    return
+  end
+  printToColor("NPC ships:", color, {0.7, 0.9, 1})
+  for _, npc in ipairs(NPC_TYPES) do
+    for variant, data in pairs(NPC_SHIPS) do
+      if found[variant] and data.npc == npc then
+        printToColor("  " .. variant .. ": " .. summaryText(ShipState_npcStats(variant)), color, {0.7, 0.9, 1})
+      end
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- events (called from Global's onObjectSpawn / onObjectDrop / onObjectPickUp / onObjectDestroy)
 
 function ShipState_onDrop(obj)
   if not isShipTile(obj) then return end
@@ -417,6 +501,11 @@ function ShipState_onDrop(obj)
   Wait.condition(function() if obj ~= nil and not obj.isDestroyed() then ShipState_place(obj) end end,
                  function() return obj == nil or obj.isDestroyed() or obj.resting end, 3,
                  function() if obj ~= nil and not obj.isDestroyed() then ShipState_place(obj) end end)
+end
+
+-- NPC ships taken from their bags (and GCDS at setup) get their name and tooltip
+function ShipState_onSpawn(obj)
+  ShipState_markNpc(obj)
 end
 
 function ShipState_onPickUp(obj)
