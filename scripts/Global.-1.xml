@@ -219,9 +219,9 @@
 	<Button id="closeButton" class="topButtons" rectAlignment="UpperRight" color="#990000" textColor="#FFFFFF" text="X" onClick="closeSetupPanel"></Button>
 
 
-    <Panel offsetXY="0 -35" color="rgb(0.5, 0.5, 0.5)" width="396" height="866" outline="Grey" outlineSize="2 -2">
-		<!-- Background image-->
-		<Image image="SetupOptions" preserveAspect="true" rectAlignment="UpperLeft"> </Image>
+    <Panel offsetXY="0 -35" color="#000000" width="396" height="866" outline="Grey" outlineSize="2 -2">
+		<!-- Background image (black behind it, if it is missing: see setupBackground_check) -->
+		<Image id="SetupBackground" image="SetupOptions" preserveAspect="true" rectAlignment="UpperLeft"> </Image>
 
 		<!-- All content displayed over the background image, below the title text at its top -->
 		<VerticalLayout padding="10 10 270 30">

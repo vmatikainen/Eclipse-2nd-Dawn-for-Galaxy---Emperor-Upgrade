@@ -254,6 +254,18 @@ function updateSetupUI()
 
   for i = 2, 6 do UI.setAttribute(i .. 'Players', 'isOn', settings.PlayerCount == i) end
   SEAT_updateSetupUI()
+  setupBackground_check()
+end
+
+-- the setup popup's background image is the UI asset "SetupOptions". tools/apply_object_fixes.py
+-- leaves it out when the image wasn't there at build time: then hide the image, and the
+-- popup's panel shows black.
+function setupBackground_check()
+  local found = false
+  for _, asset in ipairs(UI.getCustomAssets() or {}) do
+    if asset.name == "SetupOptions" and asset.url ~= nil and asset.url ~= "" then found = true end
+  end
+  UI.setAttribute("SetupBackground", "active", found and "true" or "false")
 end
 
 

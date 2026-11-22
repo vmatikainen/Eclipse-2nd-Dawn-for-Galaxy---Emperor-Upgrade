@@ -17,7 +17,8 @@ Fixes:
   setup-background       The setup popup's background (UI asset "SetupOptions") is our
                          assets/emperor_background.jpg: SETUP_BACKGROUND_URL once it is uploaded,
                          until then the image in the repository as a local file:/// URL to this
-                         computer's copy of the repository.
+                         computer's copy of the repository. Without the image, the asset is left
+                         out and the popup is black.
 
 Only the values these rules touch change; the rest of the mod file stays byte-for-byte identical.
 """
@@ -103,30 +104,32 @@ def setup_background_url():
 
 
 def setup_background(mod):
+    """Point the UI asset at the image; without the image, leave the asset out (the popup is
+    then black: setupBackground_check in Global hides the image)."""
     url = setup_background_url()
-    if url is None:
+    assets = mod.get('CustomUIAssets') or []
+    want = [a for a in assets if a.get('Name') != SETUP_ASSET]
+    if url is not None:
+        want.append({'Type': 0, 'Name': SETUP_ASSET, 'URL': url})
+    if sorted(map(json.dumps, want)) == sorted(map(json.dumps, assets)):
         return []
-    asset = next((a for a in mod.get('CustomUIAssets') or [] if a.get('Name') == SETUP_ASSET), None)
-    if asset is None:
-        raise ValueError(f'no UI asset named {SETUP_ASSET}')
-    if asset.get('URL') == url:
-        return []
-    return [('ui-asset-url', SETUP_ASSET, asset.get('URL'), url)]
+    return [('ui-assets', want)]
 
 
-def set_asset_url(raw, name, old, new):
-    """Point the UI asset `name` at a new URL; return the new raw text."""
-    key = f'"Name": {json.dumps(name)}'
-    start = raw.index('"CustomUIAssets"')
-    at = raw.index(key, start)
-    old_text = f'"URL": {json.dumps(old)}'
-    url_at = raw.index(old_text, at)
-    return raw[:url_at] + f'"URL": {json.dumps(new)}' + raw[url_at + len(old_text):]
+def set_ui_assets(raw, assets):
+    """Replace the CustomUIAssets list; return the new raw text."""
+    key = '"CustomUIAssets": '
+    start = raw.index(key) + len(key)
+    _, end = json.JSONDecoder().raw_decode(raw, start)  # end of the list in the raw text
+    line_start = raw.rfind('\n', 0, start) + 1
+    indent = raw[line_start:start - len(key)]
+    text = json.dumps(assets, indent=2).replace('\n', '\n' + indent) if assets else '[]'
+    return raw[:start] + text + raw[end:]
 
 
 def apply_edit(raw, edit):
-    if edit[0] == 'ui-asset-url':
-        return set_asset_url(raw, *edit[1:])
+    if edit[0] == 'ui-assets':
+        return set_ui_assets(raw, edit[1])
     return set_number(raw, *edit)
 
 
