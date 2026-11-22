@@ -1,0 +1,56 @@
+"""Rebuild a local mod JSON from the repository.
+
+The mod JSON is not in git (it is one huge file of one-line scripts that diffs badly).
+Everything we change in it is reproducible from the repository:
+  1. scripts/ are written into it                               (tools/tts_scripts.py build)
+  2. our object changes are applied                             (tools/apply_object_fixes.py)
+  3. player board snap points are put into the canonical order  (tools/normalize_board_snaps.py)
+
+Usage (run from the repository root):
+    python tools/rebuild_mod.py                       rebuild ./2348417296.json
+    python tools/rebuild_mod.py --mod "<save>.json"   rebuild another mod or save file
+
+Any copy of the mod works as the starting point, including the plain Steam Workshop download
+of 2348417296.json (Workshop ID of the original mod); the result is the same.
+"""
+import argparse
+import os
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_MOD = os.path.join(ROOT, '2348417296.json')
+WORKSHOP_HINT = """No mod file at {path}.
+Copy the Workshop download of the original mod there first, for example from
+  macOS:   ~/Library/Tabletop Simulator/Mods/Workshop/2348417296.json
+  Windows: Documents\\My Games\\Tabletop Simulator\\Mods\\Workshop\\2348417296.json
+(subscribe to Workshop item 2348417296 in Steam if it isn't there), then run this again."""
+
+
+def run(*args):
+    result = subprocess.run([sys.executable, *args], cwd=ROOT)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--mod', default=DEFAULT_MOD, help='mod or save JSON to rebuild (default: %(default)s)')
+    args = parser.parse_args()
+
+    mod = os.path.abspath(args.mod)
+    if not os.path.isfile(mod):
+        print(WORKSHOP_HINT.format(path=mod), file=sys.stderr)
+        sys.exit(1)
+
+    print('== scripts/ -> mod')
+    run(os.path.join('tools', 'tts_scripts.py'), 'build', '--mod', mod)
+    print('== object fixes')
+    run(os.path.join('tools', 'apply_object_fixes.py'), '--mod', mod)
+    print('== player board snap points')
+    run(os.path.join('tools', 'normalize_board_snaps.py'), '--mod', mod)
+    print(f'\nRebuilt {mod}. Load it again in Tabletop Simulator to see the changes.')
+
+
+if __name__ == '__main__':
+    main()

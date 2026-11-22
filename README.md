@@ -8,62 +8,96 @@ It adds an optional **Advanced Turn Order** house rule (see below).
 
 | Path | What it is |
 |---|---|
-| `2348417296.json` | The mod file Tabletop Simulator loads. It contains every object on the table, with all scripts embedded as one-line strings. |
-| `scripts/` | The scripts from the mod file as readable files. **Edit these.** |
-| `tools/tts_scripts.py` | Copies scripts between `scripts/` and the mod file. |
+| `scripts/` | The mod's scripts as readable files. **Edit these.** |
+| `tools/rebuild_mod.py` | Rebuilds your local mod file from the repository (scripts and board snap points). |
+| `tools/tts_scripts.py` | Copies scripts between `scripts/` and a mod file. |
+| `tools/apply_object_fixes.py` | Applies our changes to objects in the mod file (e.g. sector tiles aligned in their bags). |
+| `tools/normalize_board_snaps.py` | Gives every player board's snap points the same numbering (see CLAUDE.md). `--check` reports boards that don't follow it. |
+| `tools/annotate_boards.py` | Draws each player board's snap points, numbered, into `board-maps/index.html`. |
+| `.claude/skills/` | Project skills for Claude Code, e.g. `pull-main`. |
+
+**The mod file `2348417296.json` is not in git.** It holds every object on the table with
+all scripts as one-line strings, which makes diffs unusable. Each developer keeps a local
+copy and rebuilds it from the repository. Everything we change in it is reproducible:
+
+- the scripts come from `scripts/`
+- the changes to objects come from `tools/apply_object_fixes.py`
+- the player board snap points come from `tools/normalize_board_snaps.py`
+
+Starting from the plain Workshop download of the original mod gives exactly the same result.
 
 Script files are named the way the VS Code Tabletop Simulator extension names them:
 
 - `Global.-1.lua` and `Global.-1.xml`: the global script and the on-screen UI.
 - `<Object Name>.<GUID>.lua`: a script attached to an object, for example `Next Round.3d6d3a.lua`.
 
-The rest of this folder (other Workshop mods, thumbnails, `WorkshopFileInfos.json`)
-belongs to Tabletop Simulator and is ignored by git.
-
 ## Requirements
 
-Python 3, with no extra packages. Run the commands from the repository root:
+Python 3, with no extra packages. Run the commands from the repository root.
+
+### First time: get a mod file
+
+Copy the Workshop download of the original mod (subscribe to Workshop item `2348417296` in
+Steam) into the repository root as `2348417296.json`. TTS keeps it in:
+
+- macOS: `~/Library/Tabletop Simulator/Mods/Workshop/2348417296.json`
+- Windows: `Documents\My Games\Tabletop Simulator\Mods\Workshop\2348417296.json`
+
+Then rebuild it:
 
 ```
-python tools/tts_scripts.py build     # scripts/  ->  2348417296.json
-python tools/tts_scripts.py extract   # 2348417296.json  ->  scripts/
-python tools/tts_scripts.py check     # are they in sync? (exit code 1 if not)
+python tools/rebuild_mod.py                      # rebuild ./2348417296.json
+python tools/rebuild_mod.py --mod "<save>.json"  # or rebuild another mod or save file
 ```
+
+How you get the rebuilt file into Tabletop Simulator is up to you: copy it into the
+Workshop folder above, or work in a save file and pass it with `--mod`.
 
 ## Workflow
+
+### After every pull from main
+
+Rebuild your local mod file: `python tools/rebuild_mod.py`. Otherwise TTS keeps loading the
+old scripts and board snap points. In Claude Code, the `pull-main` skill does the pull and the
+rebuild together.
 
 ### Edit the script files (recommended)
 
 1. Edit the files in `scripts/`.
-2. Run `python tools/tts_scripts.py build`. Only the scripts you changed are rewritten
-   in `2348417296.json`; the rest of the file stays byte-for-byte identical.
-3. In Tabletop Simulator, load the mod again (*Games → Workshop*). A mod that is already
-   open doesn't pick up the change until it is loaded again.
-4. Commit both the changed script files and `2348417296.json`.
+2. Run `python tools/rebuild_mod.py`.
+3. Get the rebuilt file into TTS and load the mod again (*Games → Workshop*). A mod that is
+   already open doesn't pick up the change until it is loaded again.
+4. Commit the changed script files.
 
 ### Edit in the game, or with the VS Code extension
 
 The extension's *Save and Play* and the in-game script editor change the game that is
-running, not `2348417296.json`. To keep those changes:
+running, not the mod file. To keep those changes:
 
 1. Save the game in Tabletop Simulator. It writes a save file such as
-   `Saves/TS_Save_12.json` (under `Documents/My Games/Tabletop Simulator/`), not the mod file.
+   `Saves/TS_Save_12.json` under the Tabletop Simulator folder.
 2. Pull the scripts out of that save into `scripts/`:
    ```
-   python tools/tts_scripts.py extract --mod "../../Saves/TS_Save_12.json"
+   python tools/tts_scripts.py extract --mod "<path to>/Saves/TS_Save_12.json"
    ```
-3. Run `python tools/tts_scripts.py build` to write them into `2348417296.json`.
-4. Check `git diff scripts/` and commit.
+3. Check `git diff scripts/` and commit.
 
 Pick one place to make changes at a time. If you edit both the script files and the
-running game, the next extract or build overwrites one side.
+running game, the next extract or rebuild overwrites one side.
 
-### Before committing
+### Changing objects, not scripts
 
-Run `python tools/tts_scripts.py check`. It reports any script that differs between
-`scripts/` and the mod file, so you don't commit one without the other.
+Changes to objects (positions, bag settings, snap points, new objects) live only in the mod
+file, which isn't in git. Make them reproducible:
 
-## How the tool works
+- add a rule to `tools/apply_object_fixes.py`, or
+- write a tool that `rebuild_mod.py` runs, as `normalize_board_snaps.py` does for the board
+  snap points.
+
+Otherwise they are lost on the next rebuild, and the other developer never gets them. If
+you made the change in the game, compare your save with a rebuilt mod to see what changed.
+
+## How the script tool works
 
 - Scripts are matched to objects by **GUID**, not by name, so renaming an object in the
   game doesn't break anything. After a rename, `extract` renames the file to match.
@@ -78,12 +112,10 @@ Run `python tools/tts_scripts.py check`. It reports any script that differs betw
 
 ## Caveats
 
-- **Steam updates overwrite the mod file.** If the original Workshop item is updated,
-  Tabletop Simulator may download it again over `2348417296.json`. Git shows that as a
-  change you can inspect, discard (`git checkout -- 2348417296.json`), or merge with
-  `extract`.
-- Don't edit scripts directly inside `2348417296.json`. The next `build` replaces any
-  script whose file differs.
+- **Steam updates can overwrite the Workshop copy** of `2348417296.json` in the TTS folder.
+  Run `python tools/rebuild_mod.py` on it again, or copy your rebuilt file back.
+- Don't edit scripts directly inside the mod file. The next rebuild replaces any script
+  whose file differs.
 
 ## Advanced Turn Order house rule
 
