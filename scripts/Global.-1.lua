@@ -260,6 +260,9 @@ end
 function onLoad(saveData)
     RoundMarker = getObjectFromGUID(RoundMarker_GUID)
     TurnDirection = getObjectFromGUID(TurnDirection_GUID)
+    if TurnDirection ~= nil then
+      TurnDirection.addContextMenuItem("Update direction", function() STO_applyDirection() end)
+    end
     TechBag = getObjectFromGUID(TechBag_GUID)
     ReputationBag = getObjectFromGUID(ReputationBag_GUID)
     DiscoveryBag = getObjectFromGUID(DiscoveryBag_GUID)
@@ -312,6 +315,7 @@ function onLoad(saveData)
     end
 
     ATO_updateUI()
+    ATO_resume()
 end
 
 
@@ -367,6 +371,7 @@ function gameSetup()
 
   settings.setupCompleted = true
   updateUI_Visibility()
+  ATO_updateUI()
 
   if not(settings.RiftWeapons) then RemoveRiftExpansion() end
   if (settings.GalacticEvents) then AddGalacticEvents() end
@@ -428,8 +433,15 @@ function gameSetup()
   -- remove traitor card for 2 or 3 players
   if (players<4) then getObjectFromGUID(Traitor_GUID).destruct() end
 
+  -- with the advanced turn order, the starting techs are drawn after faction selection
+  if not (settings.AdvancedTurnOrder and ATO.phase ~= "off") then drawStartingTechs() end
+end
+
+
+-- draw the technology tiles available in round 1
+function drawStartingTechs()
   rareTechIndex = 0
-  newTechs = (players * 2) + 8
+  newTechs = (settings.PlayerCount * 2) + 8
   Wait.time(drawTech, 0.4, newTechs)  -- repeat drawTech [newTech] times
 end
 
@@ -587,12 +599,11 @@ function nextRound(parameters)
   if (settings.AdvancedTurnOrder and ATO_newRound(round)) then return end
 
   Turns.reverse_order = false
-  if TurnDirection == nil then return 
-  end
-  if (TurnDirection.is_face_down) then
+  if TurnDirection ~= nil and TurnDirection.is_face_down then
     Turns.reverse_order = true
     broadcastToAll("-- Reverse turn order --")
   end
+  STO_newRound()
 end
 
 
@@ -622,10 +633,45 @@ end
 -- configure if objects are interactable (tables extensions, game board, influence bag, ...)
 function setInteractivity(isInteractable)
   Objects_Interactable = isInteractable
-  local object = nil
-  for _,GUID in pairs(DisabledGUIDs) do getObjectFromGUID(GUID).interactable = isInteractable end
-  for _,GUID in pairs(BehindTheScenes_GUIDs) do getObjectFromGUID(GUID).interactable = isInteractable end
-  for _,GUID in pairs(ButtonGUIDs) do getObjectFromGUID(GUID).interactable = isInteractable end
+  -- skip objects that no longer exist (picked faction buttons destroy themselves)
+  for _, list in ipairs({DisabledGUIDs, BehindTheScenes_GUIDs, ButtonGUIDs}) do
+    for _, GUID in pairs(list) do
+      local object = getObjectFromGUID(GUID)
+      if object ~= nil then object.interactable = isInteractable end
+    end
+  end
+end
+
+
+-- after all factions are selected: remove the selection buttons, the selection mat and
+-- the faction display tiles (they are not used after faction selection)
+local RaceSelection_GUIDs = {
+  'ac4050', -- faction selection mat
+  -- faction display tiles (by column: Eridani, Terran Red, Planta, ...)
+  '4f1d06', '9157e7', 'dece33', 'ffd31a',
+  'd776b2', '57de7f', 'a7d9af', '81e0b9',
+  'ab763d', '00f32d', '3d6ec0', '5b204d',
+  'ed7fae', '57f866', 'aa470f', 'a59af5', -- Rho Indi, Exiles, Magellan, Lyra
+  'f3dc1f'  -- Pyxis Unity
+}
+
+-- (moving them under the table is not enough: that part of the table does not cover them)
+function hideRaceSelection()
+  for _, list in ipairs({ButtonGUIDs, RaceSelection_GUIDs}) do
+    for _, GUID in ipairs(list) do
+      local object = getObjectFromGUID(GUID)
+      if object ~= nil then object.destruct() end
+    end
+  end
+end
+
+-- number of players that have selected a faction
+function countSelectedFactions()
+  local count = 0
+  for _, faction in pairs(PlayerSelection) do
+    if faction ~= 'none' then count = count + 1 end
+  end
+  return count
 end
 
 function toggleInteractivity()
@@ -686,16 +732,29 @@ function PlayerSetup(parameters)
   PlayerColor = parameters.PlayerColor
   Faction = parameters.Faction
 
+  -- advanced turn order: factions are picked in the drafted race pick order
+  -- (in hot seat the pick is made for the player whose turn it is, whoever clicked)
+  local allowed, pickColor = ATO_canPickRace(PlayerColor)
+  if not allowed then return false end
+  PlayerColor = pickColor
+
   -- check if the player already selected a faction
   if PlayerSelection[PlayerColor] ~= 'none' then
     print('You already selected ', PlayerSelection[PlayerColor], '. You can only select one faction.')
     return false
   end
 
-  -- advanced turn order: factions are picked in the drafted race pick order
-  if not ATO_canPickRace(PlayerColor) then return false end
-
   PlayerSelection[PlayerColor] = Faction.Name
+  -- hand the pick to the next player once this setup has run (even if part of it fails)
+  local pickedColor = PlayerColor
+  Wait.time(function() ATO_racePicked(pickedColor) end, 1)
+
+  -- standard setup: hide the selection area once every player has a faction
+  -- (the advanced turn order does this itself when faction selection ends)
+  if not (settings.AdvancedTurnOrder and ATO.phase ~= "off") and settings.setupCompleted
+     and countSelectedFactions() >= settings.PlayerCount then
+    Wait.time(hideRaceSelection, 3)
+  end
   print(Player[PlayerColor].steam_name, ' selected ', Faction.Name)
 
   local Box = getObjectFromGUID(Faction.Box_GUID)
@@ -800,7 +859,6 @@ function PlayerSetup(parameters)
   end
 
   PlayerState_record(PlayerColor, Faction.Name, boardGUID)
-  ATO_racePicked(PlayerColor)
   return true
 end
 
@@ -1427,6 +1485,146 @@ function onObjectDrop(_, obj)
             function() return rest(obj) end,
             2)
     end
+    watchSector(obj)
+    stopSectorWatchUnder(obj)
+end
+
+
+-- Populate explored sectors --------------------------------------------------
+-- When a sector tile is placed and locked, its discovery tile (face down) and
+-- its ancient / guardian ships are put on it automatically.
+-- Sector number -> what the tile shows in its centre (read from the tile art).
+local SectorContents = {
+  -- Sector I
+  ['101'] = {ancients = 1}, ['104'] = {ancients = 2}, ['105'] = {ancients = 1},
+  ['108'] = {ancients = 1}, ['109'] = {ancients = 2}, ['110'] = {},
+  -- Sector II
+  ['203'] = {ancients = 2}, ['204'] = {ancients = 1}, ['211'] = {ancients = 1},
+  ['214'] = {ancients = 1}, ['206'] = {}, ['207'] = {}, ['208'] = {}, ['281'] = {},
+  -- Guardian sectors
+  ['271'] = {guardians = 1}, ['272'] = {guardians = 1},
+  ['273'] = {guardians = 1}, ['274'] = {guardians = 1},
+  -- Sector III
+  ['301'] = {ancients = 2}, ['302'] = {ancients = 1}, ['303'] = {ancients = 1},
+  ['305'] = {ancients = 1}, ['311'] = {}, ['312'] = {}, ['313'] = {}, ['314'] = {},
+  ['315'] = {}, ['316'] = {}, ['381'] = {}, ['382'] = {},
+}
+-- every entry above has a discovery tile; ships go on top of it
+
+local WatchedSectors = {}   -- GUID -> true: dropped, waiting to be locked
+local SectorWatchTimer = nil
+
+function isSectorTile(obj)
+  local name = obj.getName()
+  return name == "Sector 1" or name == "Sector 2" or name == "Sector 3"
+      or name == "Guardian Sector"
+end
+
+function isSectorPopulated(guid)
+  return table.contains(settings.PopulatedSectors or {}, guid)
+end
+
+-- a discovery tile or an ancient / guardian ship dropped on a watched sector means the
+-- players are filling it by hand: stop watching it, and never fill it automatically
+local SECTOR_DROP_RADIUS = 5.5   -- a little less than the hex's inner radius (5.96)
+
+function stopSectorWatchUnder(obj)
+  if next(WatchedSectors) == nil then return end
+  if obj.type == "Infinite" or obj.type == "Bag" then return end
+  if not (obj.getName() == "Discovery" or obj.hasTag("Discovery")
+          or obj.hasTag("Ancient") or obj.hasTag("Guardian")) then return end
+
+  local p = obj.getPosition()
+  for guid in pairs(WatchedSectors) do
+    local sector = getObjectFromGUID(guid)
+    if sector ~= nil then
+      local s = sector.getPosition()
+      local dx, dz = p.x - s.x, p.z - s.z
+      if dx * dx + dz * dz < SECTOR_DROP_RADIUS * SECTOR_DROP_RADIUS then
+        WatchedSectors[guid] = nil
+        settings.PopulatedSectors = settings.PopulatedSectors or {}
+        table.insert(settings.PopulatedSectors, guid)
+      end
+    end
+  end
+end
+
+function watchSector(obj)
+  if not settings.setupCompleted or not isSectorTile(obj) then return end
+  if SectorContents[obj.getDescription()] == nil then return end
+  if isSectorPopulated(obj.getGUID()) then return end
+  WatchedSectors[obj.getGUID()] = true
+  if SectorWatchTimer == nil then
+    SectorWatchTimer = Wait.time(checkWatchedSectors, 0.5, -1)
+  end
+end
+
+function checkWatchedSectors()
+  local remaining = false
+  for guid in pairs(WatchedSectors) do
+    local obj = getObjectFromGUID(guid)
+    if obj == nil or isSectorPopulated(guid) then
+      WatchedSectors[guid] = nil      -- put back in a bag, or already done
+    elseif obj.getLock() and obj.held_by_color == nil and not obj.is_face_down then
+      WatchedSectors[guid] = nil
+      populateSector(obj)
+    else
+      remaining = true
+    end
+  end
+  if not remaining then
+    Wait.stop(SectorWatchTimer)
+    SectorWatchTimer = nil
+  end
+end
+
+-- the infinite bag of ancient / guardian ships that setup left on the table
+function findShipSource(tag)
+  for _, o in ipairs(getObjectsWithTag(tag)) do
+    if o.type == "Infinite" then return o end
+  end
+  return nil
+end
+
+function populateSector(sector)
+  local contents = SectorContents[sector.getDescription()]
+  settings.PopulatedSectors = settings.PopulatedSectors or {}
+  table.insert(settings.PopulatedSectors, sector.getGUID())
+
+  local center = sector.getPosition()
+  local yaw = sector.getRotation().y
+
+  if DiscoveryBag ~= nil and DiscoveryBag.getQuantity() > 0 then
+    DiscoveryBag.takeObject({
+      position = center + Vector(0, 0.5, 0),
+      rotation = {180, yaw, 0},
+      smooth = false })
+  else
+    broadcastToAll("No discovery tiles left for sector " .. sector.getDescription(), {1, 0.5, 0})
+  end
+
+  local ships = contents.ancients or contents.guardians or 0
+  if ships == 0 then return end
+  local tag = contents.ancients and "Ancient" or "Guardian"
+  local source = findShipSource(tag)
+  if source == nil then
+    broadcastToAll("Could not find the " .. tag .. " ships to place on sector " .. sector.getDescription(), {1, 0.5, 0})
+    return
+  end
+  -- two ships are stacked, the top one shifted slightly so both stay visible
+  -- (about 80% overlap), in the sector's own orientation
+  local offsets = (ships == 1) and {0} or {-0.15, 0.15}
+  local r = math.rad(yaw)
+  for i, dx in ipairs(offsets) do
+    local offset = Vector(dx * math.cos(r), 0, -dx * math.sin(r))
+    -- wait a moment so each ship lands on top of the discovery tile
+    Wait.time(function()
+      source.takeObject({
+        position = center + offset + Vector(0, 1 + 0.5 * i, 0),
+        rotation = {0, yaw, 0},
+        smooth = false })
+    end, 0.3 * i)
+  end
 end
 
 --
@@ -1511,6 +1709,147 @@ function getInvertFactor(object)
 end
 
 
+-- STANDARD TURN ORDER --
+-- Without the Advanced Turn Order, passing is tracked too: a player passes by flipping
+-- their "Actions" card face down. The first player to pass gets the start player tile
+-- and starts the next round, the second gets the "Direction of Play" card and chooses
+-- the direction by flipping it. A small "Passed" list at the top right shows the order.
+
+function STO_active()
+  return settings.setupCompleted and not settings.AdvancedTurnOrder
+end
+
+function STO_pass(color, card, flipper)
+  settings.PassOrder = settings.PassOrder or {}
+  if table.contains(settings.PassOrder, color) then return end
+
+  -- when the built-in turns are used, passing is only allowed during your own turn
+  local current = Turns.turn_color
+  if Turns.enable and current ~= nil and current ~= "" and current ~= color then
+    broadcastToColor("You can only pass during your own turn. It is " .. ATO_name(current) .. "'s turn.",
+      flipper or color, {1, 0.4, 0.4})
+    Wait.time(function()
+      if card ~= nil and card.is_face_down and not table.contains(settings.PassOrder, color) then card.flip() end
+    end, 1)
+    return
+  end
+
+  table.insert(settings.PassOrder, color)
+  local position = #settings.PassOrder
+  if position == 1 then
+    broadcastToAll(ATO_name(color) .. " passes first and takes the start player tile for the next round.", color)
+    placeFirstPlayerTile(color)
+  elseif position == 2 then
+    broadcastToAll(ATO_name(color) .. " passes second and takes the Direction of Play card: flip it to choose the next round's direction.", color)
+    STO_giveDirectionCard(color)
+  else
+    broadcastToAll(string.format("%s passes (#%d).", ATO_name(color), position), color)
+  end
+
+  if position >= #ATO_seatedPlayers() then
+    broadcastToAll("All players have passed. Finish the round and press 'Next Round'.")
+  end
+
+  -- passing ends the turn
+  if Turns.enable and Turns.turn_color == color then
+    local nextColor = Turns.getNextTurnColor()
+    if nextColor ~= nil and nextColor ~= "" and nextColor ~= color then Turns.turn_color = nextColor end
+  end
+  ATO_updateUI()
+end
+
+-- move the Direction of Play card in front of the given player, next to where the
+-- start player tile goes, keeping the side it shows
+function STO_giveDirectionCard(color)
+  if TurnDirection == nil or Player[color] == nil then return end
+  local hand = Player[color].getHandTransform()
+  if hand == nil then return end
+  local position = hand.position
+  local inv = (position.z < 0) and 1 or -1
+  local rotation = TurnDirection.getRotation()
+  TurnDirection.setPositionSmooth(Vector(position.x - 4 * inv, 1.2, position.z + 28 * inv), false, false)
+  TurnDirection.setRotationSmooth({rotation.x, (inv + 1) * 90, rotation.z}, false, false)
+end
+
+-- Direction of Play card, right click: apply the side it shows now to the current round
+-- TTS's automatic turn order follows this color sequence
+local STO_COLOR_ORDER = {"White", "Brown", "Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Pink"}
+
+-- the round's turn order in the normal direction
+function STO_normalOrder()
+  if Turns.type == 2 and Turns.order ~= nil and #Turns.order > 0 then return ATO_copy(Turns.order) end
+  local seated = ATO_seatedPlayers()
+  local order = {}
+  for _, color in ipairs(STO_COLOR_ORDER) do
+    if table.contains(seated, color) then table.insert(order, color) end
+  end
+  return order
+end
+
+function STO_reversed(list)
+  local result = {}
+  for i = #list, 1, -1 do table.insert(result, list[i]) end
+  return result
+end
+
+-- give the turn to a color, and again once TTS has settled after an order change
+-- (TTS picks its own turn a few frames after the order changes)
+function STO_setTurn(color)
+  if color == nil or color == "" then return end
+  Turns.turn_color = color
+  Wait.frames(function()
+    if Turns.turn_color ~= color then Turns.turn_color = color end
+  end, 10)
+end
+
+function STO_applyDirection()
+  if TurnDirection == nil then return end
+  local reverse = TurnDirection.is_face_down
+  local current = Turns.turn_color
+
+  if not Turns.enable or current == nil or current == "" then
+    Turns.reverse_order = reverse
+  else
+    -- Changing Turns.reverse_order mid-turn leaves TTS's "next player" pointer at the
+    -- old position, so the turn jumps to the wrong player. Instead, set an explicit order
+    -- in the chosen direction and give the turn back to the current player.
+    -- The original turn settings are restored at the next round.
+    if settings.STO_Order == nil then
+      settings.STO_Order = STO_normalOrder()
+      settings.STO_TurnType = Turns.type
+    end
+    local order = ATO_copy(settings.STO_Order)
+    if reverse then order = STO_reversed(order) end
+    Turns.type = 2
+    Turns.order = order
+    Turns.reverse_order = false
+    STO_setTurn(current)
+  end
+
+  if reverse then
+    broadcastToAll("-- Direction of play: reverse --")
+  else
+    broadcastToAll("-- Direction of play: normal --")
+  end
+end
+
+-- called by nextRound: the first player to pass starts the new round
+function STO_newRound()
+  -- undo the explicit order set by "Update direction" during the round
+  if settings.STO_Order ~= nil then
+    Turns.type = settings.STO_TurnType or 0
+    if Turns.type == 2 then Turns.order = settings.STO_Order end
+    settings.STO_Order = nil
+    settings.STO_TurnType = nil
+  end
+
+  local first = (settings.PassOrder or {})[1]
+  settings.PassOrder = {}
+  if Turns.enable then STO_setTurn(first or Turns.turn_color) end
+  ATO_updateUI()
+end
+
+
 -- ADVANCED TURN ORDER --
 -- Optional house rule, enabled with the "Advanced Turn Order" checkbox in the setup panel.
 --  1. After "Setup", the seated players are put in a random draft order.
@@ -1522,16 +1861,21 @@ end
 --     "Actions" card face down during their own turn: their turn ends immediately and they
 --     take the best free turn order position for the next round.
 -- The draft panel is shown during the draft and faction selection. During play, the
--- built-in turn indicator (top right) shows the current order, with the next round's
--- order listed below it.
+-- built-in turn indicator (top right) shows the current order, and a small list at the
+-- top of the screen, left of it, shows the next round's order.
 
 -- true: players that passed still get turns (to take reactions), as in the base rules
 -- false: players that passed are skipped until the next round
 local ATO_KEEP_TURNS_AFTER_PASS = true
 
+-- timing of the draft order reveal after "Setup" is pressed (seconds)
+local ATO_REVEAL_INTRO_SECONDS = 4   -- explanation before the first player is revealed
+local ATO_REVEAL_STEP_SECONDS = 1.5  -- between revealed players, and before the draft starts
+
 function ATO_defaultState()
   return {
-    phase = "off",      -- "off", "draft", "race", "play"
+    phase = "off",      -- "off", "reveal", "draft", "race", "play"
+    revealed = 0,       -- how many players of the draft order have been revealed
     draftOrder = {},    -- colors, random order in which positions are drafted
     draftIndex = 1,
     choice = {},        -- color -> "race" or "turn"
@@ -1593,7 +1937,45 @@ function ATO_setTurns(order, current)
   Turns.order = order
   Turns.reverse_order = false
   Turns.pass_turns = true
-  if current ~= nil then Turns.turn_color = current end
+  if current == nil then return end
+  Turns.turn_color = current
+
+  -- TTS picks its own starting turn a few frames after turns are enabled or the order
+  -- changes, which can override the color set above: set it again once that has happened
+  Wait.frames(function()
+    if Turns.turn_color ~= current and (ATO_expectedTurnColor() == current or ATO.phase == "play") then
+      Turns.turn_color = current
+    end
+    ATO_syncHotseat(Turns.turn_color)
+    ATO_updateUI()
+  end, 10)
+end
+
+-- hot seat (or testing alone): everyone at the table is the same Steam account
+function ATO_isHotseat()
+  local players = Player.getPlayers()
+  if #players <= 1 then return true end
+  local steamId = players[1].steam_id
+  for _, p in ipairs(players) do
+    if p.steam_id ~= steamId then return false end
+  end
+  return true
+end
+
+-- in hot seat, move the shared screen to the given color
+function ATO_syncHotseat(color)
+  if color == nil or not ATO_isHotseat() then return end
+  local players = Player.getPlayers()
+  if #players ~= 1 then return end  -- hot seat already gives each color its own seat
+  local p = players[1]
+  if p.color ~= color then p.changeColor(color) end
+end
+
+-- whose turn it must be during the draft and faction selection (nil during play)
+function ATO_expectedTurnColor()
+  if ATO.phase == "draft" then return ATO.draftOrder[ATO.draftIndex] end
+  if ATO.phase == "race" then return ATO.raceSlots[ATO.raceIndex] end
+  return nil
 end
 
 
@@ -1611,22 +1993,67 @@ function ATO_startDraft()
       #players, settings.PlayerCount), {1, 0.8, 0.4})
   end
 
+  -- the pass order decides the turn order, so the "Direction of Play" card is not used
+  local direction = getObjectFromGUID(TurnDirection_GUID)
+  if direction ~= nil then direction.destruct() end
+  TurnDirection = nil
+
   local actionCards = ATO.actionCards  -- keep cards registered before setup
   ATO = ATO_defaultState()
   ATO.actionCards = actionCards
-  ATO.phase = "draft"
+  ATO.phase = "reveal"
+  ATO.revealed = 0
   ATO.draftOrder = ATO_shuffle(players)
   for i = 1, #players do
     ATO.raceSlots[i] = false
     ATO.turnSlots[i] = false
   end
 
-  broadcastToAll("Advanced Turn Order - draft order (random): " .. ATO_numberedList(ATO.draftOrder))
+  -- tell everyone what is about to happen, then reveal the order one player at a time
+  broadcastToAll("Advanced Turn Order: the draft order will now be randomized.")
+  broadcastToAll("In draft order, each player picks either the best race pick position or the best turn order position.")
+  ATO_updateUI()
+  Wait.time(ATO_revealNext, ATO_REVEAL_INTRO_SECONDS)
+  return true
+end
 
+-- reveal the next player of the random draft order
+function ATO_revealNext()
+  if ATO.phase ~= "reveal" then return end  -- setup was reset or the game was reloaded
+
+  -- the last two are revealed together (once the second to last is known, so is the last)
+  local count = (#ATO.draftOrder - ATO.revealed == 2) and 2 or 1
+  for _ = 1, count do
+    ATO.revealed = ATO.revealed + 1
+    local color = ATO.draftOrder[ATO.revealed]
+    broadcastToAll(string.format("%d. %s", ATO.revealed, ATO_name(color)), color)
+  end
+  ATO_updateUI()
+
+  if ATO.revealed < #ATO.draftOrder then
+    Wait.time(ATO_revealNext, ATO_REVEAL_STEP_SECONDS)
+  else
+    Wait.time(ATO_beginDraft, ATO_REVEAL_STEP_SECONDS)
+  end
+end
+
+-- the whole draft order is known: the first player chooses
+function ATO_beginDraft()
+  if ATO.phase ~= "reveal" then return end
+  ATO.phase = "draft"
+  ATO.revealed = #ATO.draftOrder
+
+  broadcastToAll("Draft order: " .. ATO_numberedList(ATO.draftOrder))
   ATO_setTurns(ATO_copy(ATO.draftOrder), ATO.draftOrder[1])
   ATO_announceDrafter()
   ATO_updateUI()
-  return true
+end
+
+-- after loading a game saved mid-reveal, skip straight to the draft
+function ATO_resume()
+  if not settings.AdvancedTurnOrder then return end
+  if ATO.phase == "reveal" then ATO_beginDraft() end
+  if ATO_isLastDrafter() then Wait.time(ATO_autoLastPick, ATO_REVEAL_STEP_SECONDS) end
 end
 
 -- best (first) and last free position of a track
@@ -1653,10 +2080,32 @@ function ATO_numberedList(slots)
   return table.concat(names, ", ")
 end
 
+function ATO_isLastDrafter()
+  return ATO.phase == "draft" and ATO.draftIndex == #ATO.draftOrder
+end
+
 function ATO_announceDrafter()
   local color = ATO.draftOrder[ATO.draftIndex]
+  if ATO_isLastDrafter() then
+    -- one free position left on each track: nothing to choose
+    broadcastToAll(string.format("%s gets the remaining positions: race pick #%d, turn order #%d",
+      ATO_name(color), ATO_firstFree(ATO.raceSlots), ATO_firstFree(ATO.turnSlots)), color)
+    Wait.time(ATO_autoLastPick, ATO_REVEAL_STEP_SECONDS)
+    return
+  end
   broadcastToAll(string.format("%s: take the best race pick (#%d) or the best turn order position (#%d)?",
     ATO_name(color), ATO_firstFree(ATO.raceSlots), ATO_firstFree(ATO.turnSlots)), color)
+end
+
+-- the last drafter gets the last free position of both tracks
+function ATO_autoLastPick()
+  if not ATO_isLastDrafter() then return end  -- already done, or the game was reset
+  local color = ATO.draftOrder[ATO.draftIndex]
+  ATO.choice[color] = "auto"
+  ATO.raceSlots[ATO_firstFree(ATO.raceSlots)] = color
+  ATO.turnSlots[ATO_firstFree(ATO.turnSlots)] = color
+  ATO.draftIndex = ATO.draftIndex + 1
+  ATO_finishDraft()
 end
 
 -- Step 2: draft buttons in the turn order panel
@@ -1664,9 +2113,11 @@ function ATO_ChooseRace(player) ATO_choose(player, "race") end
 function ATO_ChooseTurn(player) ATO_choose(player, "turn") end
 
 function ATO_choose(player, kind)
-  if ATO.phase ~= "draft" then return end
+  if ATO.phase ~= "draft" or ATO_isLastDrafter() then return end
   local color = ATO.draftOrder[ATO.draftIndex]
-  if player.color ~= color then
+  -- the choice always goes to the next player in the draft order; in hot seat the
+  -- shared screen may still be sitting in another color, so accept the click anyway
+  if player.color ~= color and not ATO_isHotseat() then
     player.broadcast("It is " .. ATO_name(color) .. "'s turn to choose.", {1, 0.4, 0.4})
     return
   end
@@ -1727,17 +2178,24 @@ function ATO_advanceRacePick()
 end
 
 -- called by PlayerSetup before a faction is given to a player
+-- returns: allowed, and the color the faction is for
 function ATO_canPickRace(color)
-  if not settings.AdvancedTurnOrder then return true end
-  if ATO.phase == "draft" then
+  if not settings.AdvancedTurnOrder then return true, color end
+  if ATO.phase == "reveal" or ATO.phase == "draft" then
     broadcastToColor("Finish the turn order draft before selecting factions.", color, {1, 0.4, 0.4})
-    return false
+    return false, color
   end
   if ATO.phase == "race" and ATO.raceSlots[ATO.raceIndex] ~= color then
-    broadcastToColor("It is " .. ATO_name(ATO.raceSlots[ATO.raceIndex]) .. "'s turn to select a faction.", color, {1, 0.4, 0.4})
-    return false
+    local expected = ATO.raceSlots[ATO.raceIndex]
+    if ATO_isHotseat() then
+      -- shared screen: the pick is for the player whose turn it is, placed at their seat
+      ATO_syncHotseat(expected)
+      return true, expected
+    end
+    broadcastToColor("It is " .. ATO_name(expected) .. "'s turn to select a faction.", color, {1, 0.4, 0.4})
+    return false, color
   end
-  return true
+  return true, color
 end
 
 -- called by PlayerSetup after a faction was given to a player
@@ -1752,6 +2210,9 @@ end
 -- Step 4: play round 1 in the drafted turn order
 function ATO_startPlay()
   ATO.phase = "play"
+  broadcastToAll("All factions selected: drawing the starting technologies.")
+  drawStartingTechs()
+  Wait.time(hideRaceSelection, 2)  -- let the last faction's setup finish first
   ATO.round = tonumber(RoundMarker.getDescription()) or 1
   ATO.order = ATO_copy(ATO.turnSlots)
   ATO.passOrder = {}
@@ -1815,6 +2276,9 @@ function ATO_pass(color, card, flipper)
   broadcastToAll(string.format("%s passes and takes turn order position #%d for the next round.",
     ATO_name(color), #ATO.passOrder), color)
 
+  -- the first player to pass starts the next round: move the start player tile to them now
+  if #ATO.passOrder == 1 then placeFirstPlayerTile(color) end
+
   if #ATO.passOrder >= #ATO.order then
     broadcastToAll("All players have passed. Finish the round and press 'Next Round'.")
   end
@@ -1826,7 +2290,8 @@ function ATO_pass(color, card, flipper)
 end
 
 function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
-  if not (settings.AdvancedTurnOrder and ATO.phase == "play") then return end
+  local advanced = settings.AdvancedTurnOrder and ATO.phase == "play"
+  if not (advanced or STO_active()) then return end
   if object == nil or object.getName() ~= "Actions" then return end
   if type(flip) ~= "number" or flip == old_flip then return end
 
@@ -1834,12 +2299,31 @@ function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
   if angle < 90 or angle > 270 then return end  -- flipped face up, not a pass
 
   local owner = ATO.actionCards[object.getGUID()] or player_color
-  ATO_pass(owner, object, player_color)
+  if owner == nil then return end
+  if advanced then ATO_pass(owner, object, player_color) else STO_pass(owner, object, player_color) end
 end
 
 function onPlayerTurn(player, previous_player)
-  if not (settings.AdvancedTurnOrder and ATO.phase == "play") then return end
+  if not settings.AdvancedTurnOrder then return end
+
+  -- during the draft and faction selection the turn follows the drafted order only:
+  -- undo any other turn change (TTS auto-start, someone pressing "End Turn")
+  local expected = ATO_expectedTurnColor()
+  if expected ~= nil then
+    if player ~= nil and player.color ~= expected and Player[expected] ~= nil
+       and (Player[expected].seated or ATO_isHotseat()) then
+      Wait.frames(function()
+        if ATO_expectedTurnColor() == expected then Turns.turn_color = expected end
+      end, 1)
+    end
+    ATO_syncHotseat(expected)
+    ATO_updateUI()
+    return
+  end
+
+  if ATO.phase ~= "play" then return end
   ATO_updateUI()
+  if player ~= nil then ATO_syncHotseat(player.color) end
   if ATO_KEEP_TURNS_AFTER_PASS or player == nil then return end
 
   -- skip players that already passed
@@ -1862,16 +2346,58 @@ function ATO_slotLines(slots, count, marker)
   return table.concat(lines, "\n")
 end
 
+-- size the panel so all of its text fits (up to 6 players: about 25 lines during the draft)
+local ATO_LINE_HEIGHT = 17     -- pixels per line at font size 13
+local ATO_CHARS_PER_LINE = 38  -- characters that fit on one line of the 266 px wide text
+
+-- length of a line without rich text tags such as <b>
+-- (plain string.find only: patterns like "(.-)\n" are "too complex" for TTS's Lua engine)
+function ATO_visibleLength(line)
+  local length, position = 0, 1
+  while true do
+    local tagStart = string.find(line, "<", position, true)
+    if tagStart == nil then return length + #line - position + 1 end
+    local tagEnd = string.find(line, ">", tagStart, true)
+    if tagEnd == nil then return length + #line - position + 1 end
+    length = length + tagStart - position
+    position = tagEnd + 1
+  end
+end
+
+function ATO_fitPanel(text, showButtons)
+  local lines, position = 0, 1
+  while position <= #text + 1 do
+    local lineEnd = string.find(text, "\n", position, true) or (#text + 1)
+    local line = string.sub(text, position, lineEnd - 1)
+    lines = lines + math.max(1, math.ceil(ATO_visibleLength(line) / ATO_CHARS_PER_LINE))
+    position = lineEnd + 1
+  end
+  local textHeight = lines * ATO_LINE_HEIGHT + 10
+  local buttonsHeight = showButtons and 96 or 10
+  UI.setAttribute("ATO_Text", "height", textHeight)
+  UI.setAttribute("ATO_Panel", "height", 40 + textHeight + buttonsHeight)
+end
+
 function ATO_updateUI()
   local enabled = settings.AdvancedTurnOrder and ATO.phase ~= "off"
   local count = math.max(#ATO.draftOrder, #ATO.order)
 
   -- draft / faction selection panel
-  if enabled and (ATO.phase == "draft" or ATO.phase == "race") then
+  if enabled and (ATO.phase == "reveal" or ATO.phase == "draft" or ATO.phase == "race") then
     local text = ""
     UI.setAttribute("ATO_Panel", "active", "true")
 
-    if ATO.phase == "draft" then
+    if ATO.phase == "reveal" then
+      local lines = {}
+      for i = 1, #ATO.draftOrder do
+        lines[i] = string.format("%d. %s", i, i <= ATO.revealed and ATO_name(ATO.draftOrder[i]) or "?")
+      end
+      text = "<b>Randomizing the draft order...</b>\n\n" ..
+        "In draft order, each player picks either the best race pick position or the best " ..
+        "turn order position, and gets the last free position of the other.\n\n" ..
+        "<b>Draft order</b>\n" .. table.concat(lines, "\n")
+      UI.setAttribute("ATO_Buttons", "active", "false")
+    elseif ATO.phase == "draft" then
       local color = ATO.draftOrder[ATO.draftIndex]
       text = "<b>Draft</b> - choosing: " .. ATO_name(color) .. "\n\n" ..
         "<b>Draft order</b>\n" .. ATO_slotLines(ATO.draftOrder, count) .. "\n\n" ..
@@ -1880,8 +2406,9 @@ function ATO_updateUI()
 
       UI.setAttribute("ATO_RaceButton", "text", string.format("Best race pick (#%d)", ATO_firstFree(ATO.raceSlots) or 0))
       UI.setAttribute("ATO_TurnButton", "text", string.format("Best turn order (#%d)", ATO_firstFree(ATO.turnSlots) or 0))
-      UI.setAttribute("ATO_Buttons", "visibility", color or "")
-      UI.setAttribute("ATO_Buttons", "active", "true")
+      -- only the drafter sees the buttons; in hot seat everyone shares one screen
+      UI.setAttribute("ATO_Buttons", "visibility", ATO_isHotseat() and "" or (color or ""))
+      UI.setAttribute("ATO_Buttons", "active", ATO_isLastDrafter() and "false" or "true")
     else
       local current = ATO.raceSlots[ATO.raceIndex]
       text = "<b>Faction selection</b> - picking: " .. ATO_name(current) .. "\n\n" ..
@@ -1896,15 +2423,29 @@ function ATO_updateUI()
     end
 
     UI.setValue("ATO_Text", text)
+    ATO_fitPanel(text, ATO.phase == "draft" and not ATO_isLastDrafter())
   else
     UI.setAttribute("ATO_Panel", "active", "false")
   end
 
   -- during play: the built-in turn indicator shows the current order,
-  -- this small list below it shows the order for the next round
+  -- this small list at the top of the screen shows the order for the next round
   if enabled and ATO.phase == "play" then
     UI.setAttribute("ATO_NextPanel", "active", "true")
+    UI.setAttribute("ATO_NextPanel", "offsetXY", "-180 0")
     UI.setValue("ATO_NextText", "<b>Next round</b>\n" .. ATO_slotLines(ATO.passOrder, #ATO.order))
+  elseif STO_active() then
+    -- standard turn order: who passed, and who gets the start player tile and direction card
+    UI.setAttribute("ATO_NextPanel", "active", "true")
+    -- sit left of the built-in turn indicator when it is shown, else in the corner
+    UI.setAttribute("ATO_NextPanel", "offsetXY", Turns.enable and "-180 0" or "0 0")
+    local passOrder = settings.PassOrder or {}
+    local count = math.max(#passOrder, #ATO_seatedPlayers())
+    UI.setValue("ATO_NextText", "<b>Passed</b>\n" .. ATO_slotLines(passOrder, count, function(color)
+      if color == passOrder[1] then return " (start)" end
+      if color == passOrder[2] then return " (direction)" end
+      return ""
+    end))
   else
     UI.setAttribute("ATO_NextPanel", "active", "false")
   end

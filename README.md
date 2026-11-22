@@ -11,6 +11,7 @@ It adds an optional **Advanced Turn Order** house rule (see below).
 | `scripts/` | The mod's scripts as readable files. **Edit these.** |
 | `tools/rebuild_mod.py` | Rebuilds your local mod file from the repository (scripts and board snap points). |
 | `tools/tts_scripts.py` | Copies scripts between `scripts/` and a mod file. |
+| `tools/apply_object_fixes.py` | Applies our changes to objects in the mod file (e.g. sector tiles aligned in their bags). |
 | `tools/normalize_board_snaps.py` | Gives every player board's snap points the same numbering (see CLAUDE.md). `--check` reports boards that don't follow it. |
 | `tools/annotate_boards.py` | Draws each player board's snap points, numbered, into `board-maps/index.html`. |
 | `.claude/skills/` | Project skills for Claude Code, e.g. `pull-main`. |
@@ -20,6 +21,7 @@ all scripts as one-line strings, which makes diffs unusable. Each developer keep
 copy and rebuilds it from the repository. Everything we change in it is reproducible:
 
 - the scripts come from `scripts/`
+- the changes to objects come from `tools/apply_object_fixes.py`
 - the player board snap points come from `tools/normalize_board_snaps.py`
 
 Starting from the plain Workshop download of the original mod gives exactly the same result.
@@ -85,10 +87,15 @@ running game, the next extract or rebuild overwrites one side.
 
 ### Changing objects, not scripts
 
-Changes to objects (positions, snap points, new objects) live only in the mod file, which
-isn't in git. Make them reproducible with a tool in `tools/` that `rebuild_mod.py` runs, as
-`normalize_board_snaps.py` does for the board snap points. Otherwise they are lost on the
-next rebuild, and the other developer never gets them.
+Changes to objects (positions, bag settings, snap points, new objects) live only in the mod
+file, which isn't in git. Make them reproducible:
+
+- add a rule to `tools/apply_object_fixes.py`, or
+- write a tool that `rebuild_mod.py` runs, as `normalize_board_snaps.py` does for the board
+  snap points.
+
+Otherwise they are lost on the next rebuild, and the other developer never gets them. If
+you made the change in the game, compare your save with a rebuilt mod to see what changed.
 
 ## How the script tool works
 
@@ -123,7 +130,24 @@ Turn it on with the **Advanced Turn Order** checkbox under *House Rules* in the 
    order position for the next round. Each new round's order is the pass order of the
    previous round.
 
+After *Setup*, the draft order is revealed one player at a time before the first choice.
+The last player in the draft has no real choice, so they get the remaining positions
+automatically.
+
 While drafting and selecting factions, a panel shows all the positions. During play, the
-built-in turn indicator (top right) shows the current order, with the next round's order
-listed below it. Passed players still get turns, so they can take reactions as in the base
+built-in turn indicator (top right) shows the current order, and a small *Next round* list
+at the top of the screen, just left of it, shows the order for the next round. Passed players still get turns, so they can take reactions as in the base
 rules. To skip them instead, set `ATO_KEEP_TURNS_AFTER_PASS = false` in `scripts/Global.-1.lua`.
+
+## Player colors and hot seat
+
+The table has seats for six player colors: **White, Red, Yellow, Blue, Green and Purple**.
+Black is the game master's seat and doesn't take part.
+
+Don't seat players at any other color. Orange has no seat at this table, and Pink, Teal
+and Brown aren't known to the mod. A player at one of those colors breaks faction setup
+(for example with *"You already selected nil"*) and the Advanced Turn Order draft.
+
+**Hot seat** works with the Advanced Turn Order: the screen moves to whoever is due to
+choose, pick a faction or play. When you set up hot seat, give each player one of the
+six colors above.

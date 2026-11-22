@@ -57,7 +57,8 @@ memory. Rule books are in the mod as `Rulebook` PDFs.
 |---|---|
 | `2348417296.json` | **Local only, git-ignored.** The mod file TTS loads: every object on the table, scripts embedded as one-line strings. Rebuilt from the repo with `tools/rebuild_mod.py`. Will be renamed when we get our own Workshop ID. |
 | `scripts/` | Scripts extracted from the mod file. **Edit these**, never the JSON directly. |
-| `tools/rebuild_mod.py` | Rebuilds a local mod file from the repo: `tts_scripts.py build` + `normalize_board_snaps.py`. `--mod` for another file. |
+| `tools/rebuild_mod.py` | Rebuilds a local mod file from the repo: `tts_scripts.py build` + `apply_object_fixes.py` + `normalize_board_snaps.py`. `--mod` for another file. |
+| `tools/apply_object_fixes.py` | Rules for our changes to objects in the mod JSON: sector tiles aligned in their bags, Reputation bag drawing in random order. `--check` exits 1 if a rule still needs applying. |
 | `tools/tts_scripts.py` | `extract` / `build` / `check` scripts between `scripts/` and the mod JSON. |
 | `tools/normalize_board_snaps.py` | Puts every player board's snap points into the canonical order (see "Snap point convention"). `--check` exits 1 if a board isn't normalized. Edits only the boards' snap point arrays. |
 | `tools/annotate_boards.py` | Draws every player board's snap points, numbered and coloured by tag, on its image → `board-maps/`. Re-run after changing board snap points. |
@@ -74,10 +75,12 @@ rebuilds it. Starting from the plain Workshop download of item 2348417296,
   run `python tools/rebuild_mod.py`.
 - **Workflow:** edit `scripts/` → `python tools/rebuild_mod.py` → get the file into TTS and
   load it again → commit `scripts/`.
-- **Changes to objects** (snap points, positions, new objects) only exist in the JSON. To
-  keep them, make them reproducible with a tool that `rebuild_mod.py` runs, like
-  `normalize_board_snaps.py`. Otherwise the next rebuild loses them and the other developer
-  never gets them.
+- **Changes to objects** (positions, bag settings, snap points, new objects) only exist in the
+  JSON. To keep them, add a rule to `apply_object_fixes.py`, or write a tool that
+  `rebuild_mod.py` runs (like `normalize_board_snaps.py`). Otherwise the next rebuild loses
+  them and the other developer never gets them. When merging work that changed the JSON,
+  compare the objects (not the scripts) between the merge base and the other side, and
+  turn every difference into such a rule.
 
 Python 3, standard library only, no extra packages. Full details are in README.md.
 
@@ -117,9 +120,10 @@ the GUID of the object you actually took out rather than hard-coding the one in 
 - **Seats:** the table has hand zones for **White, Red, Blue, Purple, Green, Yellow** (plus
   a non-player Black zone). `PlayerSetup` lays out a player's whole area relative to their
   hand position (`Player[color].getHandTransform()`).
-- **Hot seat:** players can pick colors with no hand zone, such as Orange. `PlayerSetup` doesn't
-  check for this. It records the selection, then errors on the nil hand, leaving that
-  player stuck. Not fixed yet.
+- **Hot seat:** only the six seat colors work. Seating someone at Orange (no hand zone) or at
+  Pink, Teal or Brown (not in `PlayerSelection`) breaks faction setup. The README documents
+  this for players. With the Advanced Turn Order, hot seat picks are made for whoever's turn
+  it is (`ATO_canPickRace` returns the color to use).
 - **`PlayerState[color] = { faction, boardGUID }`** (section at the end of Global) is the
   saved color → race record. `PlayerSetup` records it once a faction is set up. `onSave`
   stores it in the save next to `settings` and `ATOState`. `onLoad` restores it whatever the

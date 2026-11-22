@@ -2,8 +2,9 @@
 
 The mod JSON is not in git (it is one huge file of one-line scripts that diffs badly).
 Everything we change in it is reproducible from the repository:
-  1. scripts/ are written into it      (tools/tts_scripts.py build)
-  2. player board snap points are put into the canonical order (tools/normalize_board_snaps.py)
+  1. scripts/ are written into it                               (tools/tts_scripts.py build)
+  2. our object changes are applied                             (tools/apply_object_fixes.py)
+  3. player board snap points are put into the canonical order  (tools/normalize_board_snaps.py)
 
 Usage (run from the repository root):
     python tools/rebuild_mod.py                       rebuild ./2348417296.json
@@ -44,6 +45,8 @@ def main():
 
     print('== scripts/ -> mod')
     run(os.path.join('tools', 'tts_scripts.py'), 'build', '--mod', mod)
+    print('== object fixes')
+    run(os.path.join('tools', 'apply_object_fixes.py'), '--mod', mod)
     print('== player board snap points')
     run(os.path.join('tools', 'normalize_board_snaps.py'), '--mod', mod)
     print(f'\nRebuilt {mod}. Load it again in Tabletop Simulator to see the changes.')
