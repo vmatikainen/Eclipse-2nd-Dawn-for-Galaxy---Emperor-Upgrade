@@ -15,9 +15,9 @@ Fixes:
   reputation-bag-random  The Reputation Tiles bag draws in random order (Bag.Order = 2). It was
                          last in, first out, so a just-returned tile was drawn next.
   setup-background       The setup popup's background (UI asset "SetupOptions") is our
-                         emperor_background.jpg: SETUP_BACKGROUND_URL once it is uploaded, until
-                         then the image in the repository root as a local file:/// URL (only on
-                         a computer that has the file; without it the original stays).
+                         assets/emperor_background.jpg: SETUP_BACKGROUND_URL once it is uploaded,
+                         until then the image in the repository as a local file:/// URL to this
+                         computer's copy of the repository.
 
 Only the values these rules touch change; the rest of the mod file stays byte-for-byte identical.
 """
@@ -36,7 +36,7 @@ RANDOM_ORDER = 2
 SETUP_ASSET = 'SetupOptions'
 SETUP_BACKGROUND_URL = None  # the uploaded image's Steam Cloud URL, once there is one
 SETUP_BACKGROUND_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                     'emperor_background.jpg')
+                                     'assets', 'emperor_background.jpg')
 
 
 def walk(objects):
@@ -95,7 +95,10 @@ def setup_background_url():
     if SETUP_BACKGROUND_URL:
         return SETUP_BACKGROUND_URL
     if os.path.exists(SETUP_BACKGROUND_FILE):
-        return 'file:///' + SETUP_BACKGROUND_FILE.replace(os.sep, '/')
+        # file:///C:/... on Windows, file:///Users/... on macOS. Spaces stay as they are:
+        # TTS doesn't decode %20 in a file URL.
+        path = SETUP_BACKGROUND_FILE.replace(os.sep, '/')
+        return 'file://' + (path if path.startswith('/') else '/' + path)
     return None
 
 
