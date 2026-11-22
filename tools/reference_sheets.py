@@ -7,6 +7,7 @@ Usage (run from the repository root):
 Writes (committed):
     reference/ship-parts.svg    every ship part tile in the mod (tag ShipPart)
     reference/ancient-tech.svg  every Discovery tile that is a ship part (ancient technology)
+    reference/npc-ships.svg     every Ancient, Guardian and GCDS variant
 
 Each card shows the tile and, under it, the stats recorded for it in
 scripts/include/ShipData.ttslua, so the printed tile and our data can be compared at a glance.
@@ -31,15 +32,29 @@ OUT = os.path.join(ROOT, 'reference')
 COLUMNS, CARD_W, CARD_H, IMAGE = 5, 300, 330, 220
 
 
+def lua_table(text, name):
+    """The body of a top-level `NAME = { ... }` table in ShipData.ttslua (up to its closing line)."""
+    match = re.search(r'^' + name + r'\s*=\s*\{\n(.*?)^\}', text, re.M | re.S)
+    if not match:
+        sys.exit(f'{name} not found in {SHIP_DATA}')
+    return match.group(1)
+
+
+def entries(body):
+    """name -> one-line `{...}` value of each `["name"] = {...}` line."""
+    return dict(re.findall(r'^\s*\["([^"]+)"\]\s*=\s*(\{.*\}),?\s*(?:--.*)?$', body, re.M))
+
+
+def textures(body):
+    """texture URL -> name of each `["url"] = "name"` line."""
+    return dict(re.findall(r'^\s*\["(https?://[^"]+)"\]\s*=\s*"([^"]+)"', body, re.M))
+
+
 def read_ship_data():
-    """(part name -> stats line, discovery texture URL -> part name) from ShipData.ttslua."""
+    """(part name -> stats, discovery texture -> part name, NPC variant -> stats, NPC texture -> variant)."""
     text = open(SHIP_DATA, encoding='utf-8').read()
-    parts = {}
-    for name, body in re.findall(r'^\s*\["([^"]+)"\]\s*=\s*(\{.*\}),?\s*(?:--.*)?$', text, re.M):
-        if not name.startswith('http'):
-            parts[name] = body
-    discoveries = dict(re.findall(r'^\s*\["(https?://[^"]+)"\]\s*=\s*"([^"]+)"', text, re.M))
-    return parts, discoveries
+    return (entries(lua_table(text, 'SHIP_PARTS')), textures(lua_table(text, 'DISCOVERY_PARTS')),
+            entries(lua_table(text, 'NPC_SHIPS')), textures(lua_table(text, 'NPC_TEXTURES')))
 
 
 def describe(body):
@@ -127,7 +142,7 @@ def main():
 
     with open(args.mod, encoding='utf-8') as f:
         mod = json.load(f)
-    parts, discoveries = read_ship_data()
+    parts, discoveries, npcs, npc_textures = read_ship_data()
     objects = list(walk(mod['ObjectStates']))
 
     tiles = {}
@@ -144,12 +159,23 @@ def main():
     if missing:
         print('warning: DISCOVERY_PARTS textures not found in the mod: ' + ', '.join(missing), file=sys.stderr)
 
+    # NPC textures: the miniature's top is the top-left quarter, like Discovery tiles
+    mod_textures = {(obj.get('CustomMesh') or {}).get('DiffuseURL') for obj in objects}
+    order = list(npcs)  # ShipData order: plain variant first, NPC by NPC
+    npc_cards = sorted(((name, describe(npcs[name]) if name in npcs else 'NOT IN ShipData', url, True)
+                        for url, name in npc_textures.items() if url in mod_textures),
+                       key=lambda card: order.index(card[0]) if card[0] in order else len(order))
+    missing = sorted(set(npc_textures) - mod_textures)
+    if missing:
+        print('warning: NPC_TEXTURES not found in the mod: ' + ', '.join(missing), file=sys.stderr)
+
     os.makedirs(args.out, exist_ok=True)
     cache = {}
     for file_name, title, cards in (
             ('ship-parts.svg', f'Ship parts ({len(ship_cards)} tiles)', ship_cards),
             ('ancient-tech.svg', f'Ancient technology: Discovery tiles that are ship parts ({len(ancient_cards)})',
-             ancient_cards)):
+             ancient_cards),
+            ('npc-ships.svg', f'NPC ships: Ancients, Guardians, GCDS ({len(npc_cards)} variants)', npc_cards)):
         with open(os.path.join(args.out, file_name), 'w', encoding='utf-8', newline='\n') as f:
             f.write(sheet(title, cards, args.embed, cache))
         print(f'{file_name:<18} {len(cards)} cards')

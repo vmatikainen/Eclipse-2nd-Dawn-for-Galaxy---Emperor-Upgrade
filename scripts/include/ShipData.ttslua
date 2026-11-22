@@ -88,6 +88,37 @@ DISCOVERY_PARTS = {
   ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135690739/C34084A2AE809E7C5F165079C870FEB7F2CA3094/"] = "Ion Missile",
 }
 
+-- NPC ships: Ancients, Guardians and the GCDS. Setup picks one variant of each (the plain
+-- one, or a random one with "Randomize ..."). Their stats are printed on the miniature and
+-- can't be upgraded. Same fields as SHIP_PARTS; npc = which NPC it is. Each box printed on
+-- the tile is one die.
+NPC_TYPES = { "ancient", "guardian", "gcds" }
+NPC_SHIPS = {
+  ["Ancient"]                    = { npc = "ancient", initiative = 2, computer = 1, hull = 1, cannons = { { color = "yellow", count = 2, damage = 1 } } },
+  ["Advanced Ancient (Ion)"]     = { npc = "ancient", initiative = 3, computer = 2, hull = 1, cannons = { { color = "yellow", count = 1, damage = 1 } } },
+  ["Advanced Ancient (Plasma)"]  = { npc = "ancient", initiative = 1, computer = 1, hull = 2, cannons = { { color = "orange", count = 1, damage = 2 } } },
+  ["Guardian"]                   = { npc = "guardian", initiative = 3, computer = 2, hull = 2, cannons = { { color = "yellow", count = 3, damage = 1 } } },
+  ["Advanced Guardian (Plasma)"] = { npc = "guardian", initiative = 2, computer = 1, shield = 1, hull = 3, cannons = { { color = "orange", count = 2, damage = 2 } } },
+  ["Advanced Guardian (Missiles)"] = { npc = "guardian", initiative = 1, computer = 1, hull = 3, missiles = { { color = "orange", count = 2, damage = 2 } }, cannons = { { color = "red", count = 1, damage = 4 } } },
+  ["GCDS"]                       = { npc = "gcds", initiative = 0, computer = 2, hull = 7, cannons = { { color = "yellow", count = 4, damage = 1 } } },
+  ["Advanced GCDS (Plasma)"]     = { npc = "gcds", initiative = 3, computer = 2, shield = 2, hull = 4, cannons = { { color = "orange", count = 2, damage = 2 } } },
+  ["Advanced GCDS (Missiles)"]   = { npc = "gcds", initiative = 2, computer = 2, hull = 3, missiles = { { color = "yellow", count = 4, damage = 1 } }, cannons = { { color = "red", count = 1, damage = 4 } } },
+}
+
+-- The two advanced variants of an NPC share a name in the mod; tell them apart by texture.
+-- Texture (CustomMesh DiffuseURL) -> NPC_SHIPS entry.
+NPC_TEXTURES = {
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135618712/F1E66BC907F805054FFE58432E8C08A4E7300938/"] = "Ancient",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135609593/3A60DEEA0EE58B398EB7D9C983F47458E330941F/"] = "Advanced Ancient (Ion)",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135609165/C31794E9753FBD0E7063D05B240096A4420AAFDF/"] = "Advanced Ancient (Plasma)",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135618892/2E8B1EC497A40190CD5724FE2A68521792C3CF40/"] = "Guardian",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135607977/DDE5DAC915ACC322DFC228FCEDE0BE6B9D5D1960/"] = "Advanced Guardian (Plasma)",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135608755/2FC0F174782D2038AF7FC4B99E15ED4913B23B56/"] = "Advanced Guardian (Missiles)",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135606311/1CCB957B93BEBD324A7AE18113C77DD76AC9934E/"] = "GCDS",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135608356/2965AB26205340CD66280D29C1BE2F6EF62524B5/"] = "Advanced GCDS (Plasma)",
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135607313/0D7676C5D38F627FB672FB28DD6670F5E08ACF81/"] = "Advanced GCDS (Missiles)",
+}
+
 -- Ships and their snap point ranges on a player board (see CLAUDE.md, "Snap point convention").
 SHIP_TYPES = { "interceptor", "cruiser", "dreadnought", "starbase" }
 SHIP_SNAPS = {

@@ -295,6 +295,7 @@ function onLoad(saveData)
     -- ship state isn't saved: rebuild it from the races and the tiles on the boards
     Wait.time(ShipState_restore, 1)
     addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
+    addContextMenuItem("Show NPC ships", function(player_color) ShipState_npcReport(player_color) end)
 
     updateGameStateBasedOnSettings()
     shuffleEverything()
@@ -1498,6 +1499,10 @@ end
 
 function onObjectDestroy(obj)
     ShipState_onDestroy(obj)
+end
+
+function onObjectSpawn(obj)
+    ShipState_onSpawn(obj)
 end
 
 
