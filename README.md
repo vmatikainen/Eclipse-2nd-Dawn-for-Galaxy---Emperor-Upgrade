@@ -164,7 +164,7 @@ works with every turn order and starting player.
 
 ## Randomize seat order
 
-Tick **Randomize seat order** under *House Rules* in the setup popup, and pick when it
+Tick **Randomize seat order** under *Options* in the setup popup, and pick when it
 happens in the dropdown next to it:
 
 - **Before drafting:** when *Setup* is pressed, before the draft. Without *Draft* as the

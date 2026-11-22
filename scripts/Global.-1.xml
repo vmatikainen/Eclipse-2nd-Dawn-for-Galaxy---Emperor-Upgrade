@@ -225,6 +225,20 @@
               	tooltip="Give every player a random faction instead of picking one. The Terran factions count as one faction, and Pyxis Unity is never drawn. Factions are given out in faction pick order. There is no draft: Draft as starting player works as Random.">
               Random factions </Toggle>
 			</HorizontalLayout>
+			<HorizontalLayout flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="false" spacing="0">
+			<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+				id="RandomizeSeats" onValueChanged="SetupUI_OnChange"
+				tooltip="Move the players to random seats by changing their player colors. The dropdown next to it sets when: before drafting (needs Draft as starting player; without it, the same as before faction selection), before faction selection, or after faction selection.">
+			Randomize seat order </Toggle>
+
+			<Dropdown id="SeatTiming" minWidth="140" preferredWidth="140" flexibleWidth="0"
+				minHeight="30" preferredHeight="30" flexibleHeight="0" fontSize="12" textColor="#000000" itemTextColor="#000000"
+				interactable="false" onValueChanged="SEAT_setTiming">
+				<Option>Before drafting</Option>
+				<Option>Before faction selection</Option>
+				<Option selected="true">After faction selection</Option>
+			</Dropdown>
+			</HorizontalLayout>
        </VerticalLayout>
 
 
@@ -283,21 +297,6 @@
 					id="TechAfterRaces" onValueChanged="SetupUI_OnChange"
 					tooltip="Draw the starting technologies once every player has selected a faction, instead of when Setup is pressed. Works with every turn order and starting player.">
 				Tech setup after faction selection </Toggle>
-				</HorizontalLayout>
-
-				<HorizontalLayout flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="false" spacing="0">
-				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
-					id="RandomizeSeats" onValueChanged="SetupUI_OnChange"
-					tooltip="Move the players to random seats by changing their player colors. The dropdown next to it sets when: before drafting (needs Draft as starting player; without it, the same as before faction selection), before faction selection, or after faction selection.">
-				Randomize seat order </Toggle>
-
-				<Dropdown id="SeatTiming" minWidth="140" preferredWidth="140" flexibleWidth="0"
-					minHeight="30" preferredHeight="30" flexibleHeight="0" fontSize="12" textColor="#000000" itemTextColor="#000000"
-					interactable="false" onValueChanged="SEAT_setTiming">
-					<Option>Before drafting</Option>
-					<Option>Before faction selection</Option>
-					<Option selected="true">After faction selection</Option>
-				</Dropdown>
 				</HorizontalLayout>
 		</VerticalLayout>
 
