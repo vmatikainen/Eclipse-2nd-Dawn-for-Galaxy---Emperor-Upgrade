@@ -36,7 +36,7 @@
 
 
 
-<!-- Turn order panel, shown during the draft and race selection -->
+<!-- Turn order panel, shown during the draft and faction selection -->
 <Panel id="ATO_Panel"
 	width="290"
 	height="460"
@@ -53,7 +53,7 @@
 	<Text id="ATO_Text" fontSize="13" rectAlignment="UpperLeft" alignment="UpperLeft" width="266" height="330" offsetXY="12 -40"></Text>
 
 	<VerticalLayout id="ATO_Buttons" active="false" rectAlignment="LowerCenter" width="266" height="76" offsetXY="0 10" spacing="6">
-		<Button id="ATO_RaceButton" onClick="ATO_ChooseRace" color="#cfe3ff">Best race pick</Button>
+		<Button id="ATO_RaceButton" onClick="ATO_ChooseRace" color="#cfe3ff">Best faction pick</Button>
 		<Button id="ATO_TurnButton" onClick="ATO_ChooseTurn" color="#ffe3b8">Best turn order</Button>
 	</VerticalLayout>
 </Panel>
@@ -222,8 +222,8 @@
 
             <Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
             	id="RandomRaces" onValueChanged="SetupUI_OnChange"
-              	tooltip="Give every player a random race instead of picking one. The Terran races count as one race, and Pyxis Unity is never drawn. Races are given out in race pick order. There is no draft: Draft as starting player works as Random.">
-              Random races </Toggle>
+              	tooltip="Give every player a random faction instead of picking one. The Terran factions count as one faction, and Pyxis Unity is never drawn. Factions are given out in faction pick order. There is no draft: Draft as starting player works as Random.">
+              Random factions </Toggle>
 			</HorizontalLayout>
        </VerticalLayout>
 
@@ -252,7 +252,7 @@
 				<HorizontalLayout flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="false" spacing="0">
 				<Text minWidth="200" preferredWidth="200" flexibleWidth="0" minHeight="30" preferredHeight="30" flexibleHeight="0"
 					tooltipBackgroundColor="rgba(0,0,0,0.95)"
-					tooltip="Who starts round 1. Races are then picked one player at a time, in reverse turn order.&#10;&#10;Yellow: the Yellow player (or the next seated player after Yellow).&#10;Random: a random player. With the pass order, the whole round 1 turn order is random.&#10;Draft (pass order only): in a random draft order, each player takes either the best race pick position or the best turn order position, and gets the last free position of the other. With Rotating or Random races it works as Random.">
+					tooltip="Who starts round 1. Factions are then picked one player at a time, in reverse turn order.&#10;&#10;Yellow: the Yellow player (or the next seated player after Yellow).&#10;Random: a random player. With the pass order, the whole round 1 turn order is random.&#10;Draft (pass order only): in a random draft order, each player takes either the best faction pick position or the best turn order position, and gets the last free position of the other. With Rotating or Random factions it works as Random.">
 				Starting player </Text>
 
 				<Dropdown id="StartingPlayer" minWidth="140" preferredWidth="140" flexibleWidth="0"
@@ -281,22 +281,22 @@
 
 				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
 					id="TechAfterRaces" onValueChanged="SetupUI_OnChange"
-					tooltip="Draw the starting technologies once every player has selected a race, instead of when Setup is pressed. Works with every turn order and starting player.">
-				Tech setup after race selection </Toggle>
+					tooltip="Draw the starting technologies once every player has selected a faction, instead of when Setup is pressed. Works with every turn order and starting player.">
+				Tech setup after faction selection </Toggle>
 				</HorizontalLayout>
 
 				<HorizontalLayout flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="false" spacing="0">
 				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
 					id="RandomizeSeats" onValueChanged="SetupUI_OnChange"
-					tooltip="Move the players to random seats by changing their player colors. The dropdown next to it sets when: before drafting (needs Draft as starting player; without it, the same as before race selection), before race selection, or after race selection.">
+					tooltip="Move the players to random seats by changing their player colors. The dropdown next to it sets when: before drafting (needs Draft as starting player; without it, the same as before faction selection), before faction selection, or after faction selection.">
 				Randomize seat order </Toggle>
 
 				<Dropdown id="SeatTiming" minWidth="140" preferredWidth="140" flexibleWidth="0"
 					minHeight="30" preferredHeight="30" flexibleHeight="0" fontSize="12" textColor="#000000" itemTextColor="#000000"
 					interactable="false" onValueChanged="SEAT_setTiming">
 					<Option>Before drafting</Option>
-					<Option>Before race selection</Option>
-					<Option selected="true">After race selection</Option>
+					<Option>Before faction selection</Option>
+					<Option selected="true">After faction selection</Option>
 				</Dropdown>
 				</HorizontalLayout>
 		</VerticalLayout>

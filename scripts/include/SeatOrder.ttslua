@@ -12,8 +12,8 @@
 
 local SEAT_TIMINGS = {
   ["Before drafting"] = "draft",
-  ["Before race selection"] = "race",
-  ["After race selection"] = "after",
+  ["Before faction selection"] = "race",
+  ["After faction selection"] = "after",
 }
 -- colors without a seat, used to park one player while the others move
 local SEAT_TEMP_COLORS = {"Orange", "Pink", "Teal", "Brown"}

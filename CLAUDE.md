@@ -10,7 +10,7 @@ The goal is to add functionality and quality-of-life features for playing Eclips
 
 - Already added: turn order options, **Rotating** or **Pass order** with a **Yellow**,
   **Random** or **Draft** starting player (the old Advanced Turn Order is Pass order +
-  Draft), and race selection in turn (see README).
+  Draft), and faction selection in turn (see README).
 - In progress: **combat zone automation**. Take the units in a contested hex, move them
   to a combat area, and pick the right dice for each player to throw. The groundwork is
   **ship state**: knowing which race each player color has and what is on each of their
@@ -117,7 +117,7 @@ https://api.tabletopsimulator.com/
     `ATO.raceSlots`) → `ATO_startPlay`. During the draft and race selection the turn
     only moves on with a choice or a pick: `onPlayerTurn` undoes "End Turn". Play with the pass order is `ATO.phase == "play"`.
     `ATO_startMode()` is the effective starting player mode (Draft only with Pass order
-    and without Random races, otherwise Random).
+    and without Random factions, otherwise Random).
   - `STO_*` ("ROTATING TURN ORDER"): play with the rotating order (`STO_active()`):
     passing, the Direction of Play card. The seats are fixed, so clockwise is always
     Yellow, Red, Green, Blue, Purple, White (`STO_COLOR_ORDER`). That isn't TTS's automatic
@@ -137,7 +137,7 @@ https://api.tabletopsimulator.com/
 - `include/SeatOrder.ttslua`: the "Randomize seat order" setup option (`SEAT_*`). Global
   calls it from `gameSetup`, `PlayerSetup` (which records picks for later and sets up
   factions through `placeFaction`), the turn order code and the turn order panel.
-- `include/RandomRaces.ttslua`: the "Random races" setup option (`RandomRaces_*`). It gives
+- `include/RandomRaces.ttslua`: the "Random factions" setup option (`RandomRaces_*`). It gives
   races out through `PlayerSetup`, reading each race button's faction table with
   `getTable`. Global calls it from `PlayerSetup` and the turn order code
   (`ATO_advanceRacePick` gives the current race).
@@ -529,6 +529,10 @@ Taking it off during their turn gives `<name> canceled action Research`. `<name>
 
 - New feature code goes in its own component file (see "Includes"), and event handlers
   stay in Global. Refactor original code only in the areas a feature touches.
+- **Player-facing text says "faction", never "race"**: setup UI, tooltips, panels, chat
+  messages, README. Code keeps "race" in identifiers and internal values (`ATO.raceSlots`,
+  `ATO.phase == "race"`, `RandomRaces_*`, `settings.TechAfterRaces`, XML ids), so saves and
+  the code stay as they are.
 - Match the existing style in files you edit. Global uses PascalCase for older functions,
   and new subsystems use a prefix (`ATO_`).
 - Tools in `tools/` use only the Python standard library.

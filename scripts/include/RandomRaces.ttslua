@@ -40,7 +40,7 @@ local RandomRaces_giving = false  -- true while PlayerSetup runs for a random ra
 -- called by PlayerSetup: with random races, nobody picks a race by hand
 function RandomRaces_canPickRace(color)
   if not settings.RandomRaces or RandomRaces_giving then return true end
-  broadcastToColor("Races are given out randomly in this game.", color, {1, 0.4, 0.4})
+  broadcastToColor("Factions are given out randomly in this game.", color, {1, 0.4, 0.4})
   return false
 end
 
@@ -85,19 +85,19 @@ function RandomRaces_give(color)
     local button = race and getObjectFromGUID(race.guid)
     local faction = button and button.getTable(race.var)
     if faction ~= nil then
-      broadcastToAll(ATO_name(color) .. " gets a random race: " .. faction.Name, color)
+      broadcastToAll(ATO_name(color) .. " gets a random faction: " .. faction.Name, color)
       RandomRaces_giving = true
       local ok, given = pcall(PlayerSetup, {PlayerColor = color, Faction = faction})
       RandomRaces_giving = false
       if not ok then
-        broadcastToAll("Random races: setting up " .. faction.Name .. " failed: " .. tostring(given), {1, 0.4, 0.4})
+        broadcastToAll("Random factions: setting up " .. faction.Name .. " failed: " .. tostring(given), {1, 0.4, 0.4})
         return false
       end
       if given then button.destruct() end
       return given
     end
   end
-  broadcastToAll("Random races: no race left for " .. ATO_name(color) .. ".", {1, 0.4, 0.4})
+  broadcastToAll("Random factions: no faction left for " .. ATO_name(color) .. ".", {1, 0.4, 0.4})
   return false
 end
 

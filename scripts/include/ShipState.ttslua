@@ -323,7 +323,7 @@ end
 function ShipState_report(color)
   local player = ShipState[color]
   if player == nil then
-    printToColor("Ship state: " .. color .. " has no race with ship blueprints.", color, {1, 0.4, 0.4})
+    printToColor("Ship state: " .. color .. " has no faction with ship blueprints.", color, {1, 0.4, 0.4})
     return
   end
   printToColor(color .. " (" .. player.faction .. ") ships:", color, {0.7, 0.9, 1})

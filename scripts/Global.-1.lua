@@ -125,10 +125,10 @@ function printSettings()
   printToAll(string.format(" - Mionor Species: %s", tostring(settings.MinorSpecies)))
   printToAll(string.format(" - Galactic Events: %s", tostring(settings.GalacticEvents)))
   printToAll(string.format(" - Round Limit: %s", tostring(not settings.NoRoundLimit)))
-  printToAll(string.format(" - Tech setup after race selection: %s", tostring(settings.TechAfterRaces == true)))
+  printToAll(string.format(" - Tech setup after faction selection: %s", tostring(settings.TechAfterRaces == true)))
   printToAll(string.format(" - Turn order: %s", ATO_passOrder() and "pass order" or "rotating"))
   printToAll(string.format(" - Starting player: %s", ATO_startMode()))
-  printToAll(string.format(" - Random races: %s", tostring(settings.RandomRaces == true)))
+  printToAll(string.format(" - Random factions: %s", tostring(settings.RandomRaces == true)))
   printToAll(string.format(" - Randomize seat order: %s", settings.RandomizeSeats and tostring(SEAT_timing()) or "false"))
 end
 
@@ -2217,7 +2217,7 @@ function ATO_startSetup()
     ATO.raceSlots = ATO_copy(order)
     ATO.draftIndex = #order + 1
     ATO.orderAfterSeats = true
-    broadcastToAll("Races are picked in a random order. After race selection the seats are randomized: the last player to pick starts, and play goes clockwise from them.")
+    broadcastToAll("Factions are picked in a random order. After faction selection the seats are randomized: the last player to pick starts, and play goes clockwise from them.")
     ATO_finishDraft()
     return
   end
@@ -2229,9 +2229,9 @@ function ATO_startSetup()
     ATO.draftOrder = ATO_shuffle(players)
     if mode == "draft" then
       broadcastToAll("Turn order draft: the draft order will now be randomized.")
-      broadcastToAll("In draft order, each player picks either the best race pick position or the best turn order position.")
+      broadcastToAll("In draft order, each player picks either the best faction pick position or the best turn order position.")
     else
-      broadcastToAll("Pass order: the round 1 turn order will now be randomized. Races are picked in reverse turn order.")
+      broadcastToAll("Pass order: the round 1 turn order will now be randomized. Factions are picked in reverse turn order.")
     end
     ATO_updateUI()
     Wait.time(ATO_revealNext, ATO_REVEAL_INTRO_SECONDS)
@@ -2343,12 +2343,12 @@ function ATO_announceDrafter()
   local color = ATO.draftOrder[ATO.draftIndex]
   if ATO_isLastDrafter() then
     -- one free position left on each track: nothing to choose
-    broadcastToAll(string.format("%s gets the remaining positions: race pick #%d, turn order #%d",
+    broadcastToAll(string.format("%s gets the remaining positions: faction pick #%d, turn order #%d",
       ATO_name(color), ATO_firstFree(ATO.raceSlots), ATO_firstFree(ATO.turnSlots)), color)
     Wait.time(ATO_autoLastPick, ATO_REVEAL_STEP_SECONDS)
     return
   end
-  broadcastToAll(string.format("%s: take the best race pick (#%d) or the best turn order position (#%d)?",
+  broadcastToAll(string.format("%s: take the best faction pick (#%d) or the best turn order position (#%d)?",
     ATO_name(color), ATO_firstFree(ATO.raceSlots), ATO_firstFree(ATO.turnSlots)), color)
 end
 
@@ -2389,8 +2389,8 @@ function ATO_choose(player, kind)
   end
   ATO.raceSlots[raceIndex] = color
   ATO.turnSlots[turnIndex] = color
-  broadcastToAll(string.format("%s takes %s: race pick #%d, turn order #%d", ATO_name(color),
-    kind == "race" and "the best race pick" or "the best turn order position", raceIndex, turnIndex), color)
+  broadcastToAll(string.format("%s takes %s: faction pick #%d, turn order #%d", ATO_name(color),
+    kind == "race" and "the best faction pick" or "the best turn order position", raceIndex, turnIndex), color)
 
   ATO.draftIndex = ATO.draftIndex + 1
   if ATO.draftIndex > #ATO.draftOrder then
@@ -2404,7 +2404,7 @@ end
 
 -- all positions are taken: continue with faction selection
 function ATO_finishDraft()
-  broadcastToAll("Race pick order: " .. ATO_numberedList(ATO.raceSlots))
+  broadcastToAll("Faction pick order: " .. ATO_numberedList(ATO.raceSlots))
   if not ATO.orderAfterSeats then
     broadcastToAll("Round 1 turn order: " .. ATO_numberedList(ATO.turnSlots))
   end
@@ -2643,8 +2643,8 @@ function onPlayerTurn(player, previous_player)
        and (Player[expected].seated or ATO_isHotseat()) then
       -- the turn only moves on with a choice or a race pick
       if previous_player ~= nil and previous_player.color == expected then
-        local hint = ATO.phase == "race" and "Select a race to end your turn."
-          or "Choose the best race pick or the best turn order position to end your turn."
+        local hint = ATO.phase == "race" and "Select a faction to end your turn."
+          or "Choose the best faction pick or the best turn order position to end your turn."
         broadcastToColor(hint, expected, {1, 0.8, 0.4})
       end
       -- set it back, and again once TTS has settled
@@ -2722,7 +2722,7 @@ function ATO_updateUI()
   local count = math.max(#ATO.draftOrder, #ATO.order)
   local roundOneText = "<b>Round 1 turn order</b>\n" .. ATO_slotLines(ATO.turnSlots, count)
   if ATO.orderAfterSeats then
-    roundOneText = "<b>Round 1 turn order</b>\nThe seats are randomized after race selection. " ..
+    roundOneText = "<b>Round 1 turn order</b>\nThe seats are randomized after faction selection. " ..
       "The last player to pick starts, and play goes clockwise from them."
   end
 
@@ -2738,11 +2738,11 @@ function ATO_updateUI()
       end
       if not ATO_usesDraft() then
         text = "<b>Randomizing the turn order...</b>\n\n" ..
-          "This is the round 1 turn order. Races are picked in the reverse order.\n\n" ..
+          "This is the round 1 turn order. Factions are picked in the reverse order.\n\n" ..
           "<b>Turn order</b>\n" .. table.concat(lines, "\n")
       else
         text = "<b>Randomizing the draft order...</b>\n\n" ..
-          "In draft order, each player picks either the best race pick position or the best " ..
+          "In draft order, each player picks either the best faction pick position or the best " ..
           "turn order position, and gets the last free position of the other.\n\n" ..
           "<b>Draft order</b>\n" .. table.concat(lines, "\n")
       end
@@ -2751,23 +2751,23 @@ function ATO_updateUI()
       local color = ATO.draftOrder[ATO.draftIndex]
       text = "<b>Draft</b> - choosing: " .. ATO_name(color) .. "\n\n" ..
         "<b>Draft order</b>\n" .. ATO_slotLines(ATO.draftOrder, count) .. "\n\n" ..
-        "<b>Race pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count) .. "\n\n" ..
+        "<b>Faction pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count) .. "\n\n" ..
         "<b>Round 1 turn order</b>\n" .. ATO_slotLines(ATO.turnSlots, count)
 
-      UI.setAttribute("ATO_RaceButton", "text", string.format("Best race pick (#%d)", ATO_firstFree(ATO.raceSlots) or 0))
+      UI.setAttribute("ATO_RaceButton", "text", string.format("Best faction pick (#%d)", ATO_firstFree(ATO.raceSlots) or 0))
       UI.setAttribute("ATO_TurnButton", "text", string.format("Best turn order (#%d)", ATO_firstFree(ATO.turnSlots) or 0))
       -- only the drafter sees the buttons; in hot seat everyone shares one screen
       UI.setAttribute("ATO_Buttons", "visibility", ATO_isHotseat() and "" or (color or ""))
       UI.setAttribute("ATO_Buttons", "active", ATO_isLastDrafter() and "false" or "true")
     elseif ATO.phase == "seating" then
       text = "<b>Randomizing seats...</b>\n\n" ..
-        "<b>Race pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count) .. "\n\n" ..
+        "<b>Faction pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count) .. "\n\n" ..
         roundOneText
       UI.setAttribute("ATO_Buttons", "active", "false")
     else
       local current = ATO.raceSlots[ATO.raceIndex]
       text = "<b>Faction selection</b> - picking: " .. ATO_name(current) .. "\n\n" ..
-        "<b>Race pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count, function(color)
+        "<b>Faction pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count, function(color)
           local faction = PlayerSelection[color]
           if faction ~= nil and faction ~= 'none' then return " (" .. faction .. ")" end
           if color == current then return "  (picking)" end

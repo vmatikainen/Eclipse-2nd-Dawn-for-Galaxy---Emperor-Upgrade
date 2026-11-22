@@ -145,21 +145,21 @@ explanation.
 - **Random:** a random player starts. With *Pass order* the whole round 1 turn order is
   random, revealed one player at a time.
 - **Draft** (*Pass order* only): after *Setup*, players are put in a random draft order,
-  revealed one at a time. On their turn, each player takes either the best free race pick
+  revealed one at a time. On their turn, each player takes either the best free faction pick
   position or the best free turn order position, and is put in the last free position of
   the other track at the same time. The last player in the draft gets the remaining
-  positions automatically. With *Rotating*, or with *Random races*, *Draft* works as
+  positions automatically. With *Rotating*, or with *Random factions*, *Draft* works as
   *Random*.
 
 So the old Advanced Turn Order is *Pass order* + *Draft*.
 
-**Race selection** always comes after *Setup*, one player at a time: in reverse turn
+**Faction selection** always comes after *Setup*, one player at a time: in reverse turn
 order (the player before the starting player picks first, the starting player last), or
-in the drafted race pick order. Only the player whose turn it is to pick sees the race
-buttons. A panel shows the race pick order and the round 1 turn order meanwhile.
+in the drafted faction pick order. Only the player whose turn it is to pick sees the faction
+buttons. A panel shows the faction pick order and the round 1 turn order meanwhile.
 
-The starting techs are drawn at *Setup*. Tick **Tech setup after race selection** under
-*House Rules* (off by default) to draw them once every player has a race instead. It
+The starting techs are drawn at *Setup*. Tick **Tech setup after faction selection** under
+*House Rules* (off by default) to draw them once every player has a faction instead. It
 works with every turn order and starting player.
 
 ## Randomize seat order
@@ -168,32 +168,32 @@ Tick **Randomize seat order** under *House Rules* in the setup popup, and pick w
 happens in the dropdown next to it:
 
 - **Before drafting:** when *Setup* is pressed, before the draft. Without *Draft* as the
-  starting player this works like *Before race selection*.
-- **Before race selection:** after the draft, or when *Setup* is pressed (before the
+  starting player this works like *Before faction selection*.
+- **Before faction selection:** after the draft, or when *Setup* is pressed (before the
   starting player is chosen) if there is no draft.
-- **After race selection** (default): players pick factions first, but nothing is set
+- **After faction selection** (default): players pick factions first, but nothing is set
   up yet. Once everyone has picked, the seats are randomized and each faction is set up
   at its player's new seat. The seats people sit at before that decide nothing, so
-  (except with *Draft*) races are picked in a random order, and the starting player
+  (except with *Draft*) factions are picked in a random order, and the starting player
   setting isn't used: the last player to pick starts, and play goes clockwise from
   their new seat.
 
 The seated players are moved to a random order of the seats they already use, by
-changing their player colors. Draft results, race picks and the turn order go with the
+changing their player colors. Draft results, faction picks and the turn order go with the
 player. This works in hot seat too:
 the hot seat players are moved between the colors in the same way.
 
-## Random races
+## Random factions
 
-Tick **Random races** under *Options* in the setup popup. Nobody picks a race: after
+Tick **Random factions** under *Options* in the setup popup. Nobody picks a faction: after
 *Setup*, every seated player is given a random one.
 
-- The six Terran races count as one race in the draw. A player who draws it gets the
-  Terran race of their own color (Purple gets the black one, Terran Alliance).
-- Pyxis Unity is never drawn. Expansion races are only drawn with *Expansion Species*.
-- Races are given out in race pick order (reverse turn order). There is no draft:
+- The six Terran factions count as one faction in the draw. A player who draws it gets the
+  Terran faction of their own color (Purple gets the black one, Terran Alliance).
+- Pyxis Unity is never drawn. Expansion factions are only drawn with *Expansion Species*.
+- Factions are given out in faction pick order (reverse turn order). There is no draft:
   *Draft* as the starting player works as *Random*.
-- **Randomize seat order** works with it as with picked races.
+- **Randomize seat order** works with it as with picked factions.
 
 ## Combat simulator
 
