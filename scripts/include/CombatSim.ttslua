@@ -37,7 +37,8 @@
 --  - Not simulated: retreating (other than missile boats).
 
 local CombatSim_RUN_CHOICES = { 1000, 5000 }  -- the battles per simulation the panel offers
-local CombatSim_PER_FRAME = 50      -- battles per frame, so the game doesn't freeze
+local CombatSim_FRAME_TIME = 0.04   -- seconds of battles per frame, so the game doesn't freeze
+local CombatSim_PER_FRAME = 50      -- battles per frame without a clock (os.clock)
 local CombatSim_MAX_ROUNDS = 100    -- a battle still going after this many rounds is a draw
 -- position of the button on the player board (board-local). Buttons aren't mirrored like
 -- the snap points: negative x is the board's left side, seen from the owner's seat.
@@ -377,70 +378,141 @@ function CombatSim_template(stats, side, ship, size, npc)
   }
 end
 
--- a hit from the rift die (auto) always hits
-function CombatSim_canHit(hit, computer, target)
-  if hit.auto then return true end
-  local roll = hit.roll
-  if roll == 6 then return true end
+-- The battle engine. TTS runs Lua in an interpreter (MoonSharp), where creating tables
+-- and functions is slow, so the engine is built once per simulation (CombatSim_engine)
+-- and every battle reuses it: ships are reset, not recreated, hits go into reused
+-- arrays, and nothing makes a table or a function per shot.
+--
+-- A hit is a roll and its damage. Roll 0 is a rift die's hit, which always hits.
+
+-- does a roll hit a ship with this shield?
+local function CombatSim_hits(roll, computer, shield)
+  if roll == 0 or roll == 6 then return true end
   if roll == 1 then return false end
-  return roll + computer - target.tpl.shield >= 6
+  return roll + computer - shield >= 6
 end
 
-local function CombatSim_damage(target, amount)
-  target.dmg = target.dmg + amount
-  if target.dmg >= target.tpl.hp then target.alive = false end
-end
-
--- assign one ship's hits to ships (the enemy's, or its own for rift self damage).
--- bySize: aim at the biggest ships first (NPCs, and rift self damage)
-function CombatSim_assign(hits, computer, enemies, bySize)
-  local targets = {}
-  for _, ship in ipairs(enemies) do
-    if ship.alive and not ship.gone then table.insert(targets, ship) end
+-- builds the engine: groups { {tpl, count} } in firing order
+function CombatSim_engine(groups)
+  local E = {
+    order = {}, ships = { you = {}, opp = {} }, rift = { you = {}, opp = {} },
+    left = { you = 0, opp = 0 }, alive = { you = 0, opp = 0 },
+    minShield = { you = 99, opp = 99 }, regenerate = false,
+    -- reused work arrays: hits (damage, roll), self hits, targets, used hits
+    hitDmg = {}, hitRoll = {}, selfDmg = {}, selfRoll = {}, targets = {}, used = {},
+  }
+  for _, group in ipairs(groups) do
+    local tpl = group.tpl
+    local members = {}
+    for _ = 1, group.count do
+      local ship = { tpl = tpl, side = tpl.side, hp = tpl.hp, size = tpl.size, shield = tpl.shield,
+                     dmg = 0, alive = true, gone = false }
+      table.insert(members, ship)
+      table.insert(E.ships[tpl.side], ship)
+      if tpl.rift > 0 then table.insert(E.rift[tpl.side], ship) end
+    end
+    if tpl.shield < E.minShield[tpl.side] then E.minShield[tpl.side] = tpl.shield end
+    if tpl.regenerate then E.regenerate = true end
+    table.insert(E.order, { tpl = tpl, members = members,
+                            enemy = tpl.side == "you" and "opp" or "you" })
   end
-  if #targets == 0 then return end
+  return E
+end
 
-  -- biggest ships first if bySize; both sides prefer ships that are already damaged
-  table.sort(targets, function(a, b)
-    if bySize and a.tpl.size ~= b.tpl.size then return a.tpl.size > b.tpl.size end
-    return a.dmg > b.dmg
-  end)
-  table.sort(hits, function(a, b) return a.dmg > b.dmg end)
+local function CombatSim_reset(E)
+  for _, side in ipairs(CombatSim_SIDES) do
+    local ships = E.ships[side]
+    for i = 1, #ships do
+      local ship = ships[i]
+      ship.dmg, ship.alive, ship.gone = 0, true, false
+    end
+    E.left[side], E.alive[side] = #ships, #ships
+  end
+end
 
-  -- 1. destroy what can be destroyed, in target order
-  local used = {}
-  for _, target in ipairs(targets) do
-    local need = target.tpl.hp - target.dmg
-    -- the smallest single hit that destroys it
+local function CombatSim_damage(E, ship, amount)
+  ship.dmg = ship.dmg + amount
+  if ship.alive and ship.dmg >= ship.hp then
+    ship.alive = false
+    E.alive[ship.side] = E.alive[ship.side] - 1
+    if not ship.gone then E.left[ship.side] = E.left[ship.side] - 1 end
+  end
+end
+
+-- assign n hits (dmg[], roll[]) to ships (the enemy's, or its own for rift self damage).
+-- bySize: aim at the biggest ships first (NPCs, and rift self damage); both sides prefer
+-- ships that are already damaged. Destroy what can be destroyed (the smallest single hit
+-- that does it, else the biggest hits until it is destroyed); the rest goes on the first
+-- ship each hit can reach.
+local function CombatSim_assign(E, dmg, roll, n, computer, ships, bySize)
+  -- targets, sorted by insertion (few ships)
+  local targets, m = E.targets, 0
+  for i = 1, #ships do
+    local ship = ships[i]
+    if ship.alive and not ship.gone then
+      local j = m
+      while j > 0 do
+        local other = targets[j]
+        local before
+        if bySize and other.size ~= ship.size then before = ship.size > other.size
+        else before = ship.dmg > other.dmg end
+        if not before then break end
+        targets[j + 1] = other
+        j = j - 1
+      end
+      targets[j + 1] = ship
+      m = m + 1
+    end
+  end
+  if m == 0 then return end
+
+  -- hits, biggest damage first
+  for i = 2, n do
+    local d, r = dmg[i], roll[i]
+    local j = i - 1
+    while j > 0 and dmg[j] < d do
+      dmg[j + 1], roll[j + 1] = dmg[j], roll[j]
+      j = j - 1
+    end
+    dmg[j + 1], roll[j + 1] = d, r
+  end
+
+  local used = E.used
+  for i = 1, n do used[i] = false end
+
+  for t = 1, m do
+    local target = targets[t]
+    local need = target.hp - target.dmg
+    local shield = target.shield
     local single = nil
-    for i, hit in ipairs(hits) do
-      if not used[i] and hit.dmg >= need and CombatSim_canHit(hit, computer, target) then single = i end
+    for i = 1, n do
+      if not used[i] and dmg[i] >= need and CombatSim_hits(roll[i], computer, shield) then single = i end
     end
     if single ~= nil then
       used[single] = true
-      CombatSim_damage(target, hits[single].dmg)
+      CombatSim_damage(E, target, dmg[single])
     else
-      -- else the biggest hits until it is destroyed
-      local pick, total = {}, 0
-      for i, hit in ipairs(hits) do
-        if total < need and not used[i] and CombatSim_canHit(hit, computer, target) then
-          table.insert(pick, i)
-          total = total + hit.dmg
+      local total, picked = 0, 0
+      for i = 1, n do
+        if total < need and not used[i] and CombatSim_hits(roll[i], computer, shield) then
+          total = total + dmg[i]
+          picked = picked + 1
+          E.targets[m + picked] = i  -- remember the picks after the targets
         end
       end
       if total >= need then
-        for _, i in ipairs(pick) do used[i] = true end
-        CombatSim_damage(target, total)
+        for p = 1, picked do used[E.targets[m + p]] = true end
+        CombatSim_damage(E, target, total)
       end
     end
   end
 
-  -- 2. the rest goes on the first ship each hit can reach
-  for i, hit in ipairs(hits) do
+  for i = 1, n do
     if not used[i] then
-      for _, target in ipairs(targets) do
-        if target.alive and CombatSim_canHit(hit, computer, target) then
-          CombatSim_damage(target, hit.dmg)
+      for t = 1, m do
+        local target = targets[t]
+        if target.alive and CombatSim_hits(roll[i], computer, target.shield) then
+          CombatSim_damage(E, target, dmg[i])
           break
         end
       end
@@ -448,98 +520,100 @@ function CombatSim_assign(hits, computer, enemies, bySize)
   end
 end
 
--- one battle. groups: { {tpl, count} } in firing order.
--- Returns "win", "loss" or "draw" (for "you"), and both sides' ships.
-function CombatSim_battle(groups)
-  local sides = { you = {}, opp = {} }
-  local order = {}
-  for _, group in ipairs(groups) do
-    local members = {}
-    for _ = 1, group.count do
-      local ship = { tpl = group.tpl, dmg = 0, alive = true, gone = false }
-      table.insert(members, ship)
-      table.insert(sides[group.tpl.side], ship)
-    end
-    table.insert(order, { tpl = group.tpl, members = members })
-  end
-
-  -- ships still fighting (alive and not escaped), and ships alive at all
-  local function count(side)
-    local standing, alive = 0, 0
-    for _, ship in ipairs(sides[side]) do
-      if ship.alive then
-        alive = alive + 1
-        if not ship.gone then standing = standing + 1 end
-      end
-    end
-    return standing, alive
-  end
-
-  -- own ships with rift weapons: they take the rift die's self damage
-  local riftShips = { you = {}, opp = {} }
-  for side, ships in pairs(sides) do
-    for _, ship in ipairs(ships) do
-      if ship.tpl.rift > 0 then table.insert(riftShips[side], ship) end
-    end
-  end
-
-  local function volley(kind)
-    for _, group in ipairs(order) do
-      local tpl = group.tpl
-      local dice = tpl[kind]
-      local rift = kind == "cannons" and tpl.rift or 0
-      if #dice > 0 or rift > 0 then
-        local enemies = sides[tpl.side == "you" and "opp" or "you"]
-        for _, ship in ipairs(group.members) do
-          if ship.alive and not ship.gone then
-            local hits, selfHits = {}, {}
-            for _, damage in ipairs(dice) do
-              table.insert(hits, { roll = math.random(6), dmg = damage })
+local function CombatSim_volley(E, missiles)
+  local order = E.order
+  local random = math.random
+  local faces = CombatSim_RIFT_FACES
+  for g = 1, #order do
+    local group = order[g]
+    local tpl = group.tpl
+    local dice = missiles and tpl.missiles or tpl.cannons
+    local rift = missiles and 0 or tpl.rift
+    local count = #dice
+    if count > 0 or rift > 0 then
+      local enemy = group.enemy
+      local enemies = E.ships[enemy]
+      local computer = tpl.computer
+      -- a roll that misses the weakest shield on the other side misses every ship
+      local minShield = E.minShield[enemy]
+      local members = group.members
+      for s = 1, #members do
+        local ship = members[s]
+        if ship.alive and not ship.gone then
+          if E.left[enemy] == 0 then return end
+          local dmg, roll, n = E.hitDmg, E.hitRoll, 0
+          for d = 1, count do
+            local r = random(6)
+            if r == 6 or (r ~= 1 and r + computer - minShield >= 6) then
+              n = n + 1
+              dmg[n], roll[n] = dice[d], r
             end
-            for _ = 1, rift do
-              local face = CombatSim_RIFT_FACES[math.random(6)]
-              if face.hit > 0 then table.insert(hits, { auto = true, dmg = face.hit }) end
-              if face.self > 0 then table.insert(selfHits, { auto = true, dmg = face.self }) end
+          end
+          local selfN = 0
+          for _ = 1, rift do
+            local face = faces[random(6)]
+            if face.hit > 0 then
+              n = n + 1
+              dmg[n], roll[n] = face.hit, 0
             end
-            CombatSim_assign(hits, tpl.computer, enemies, tpl.npc)
-            if #selfHits > 0 then CombatSim_assign(selfHits, 0, riftShips[tpl.side], true) end
+            if face.self > 0 then
+              selfN = selfN + 1
+              E.selfDmg[selfN], E.selfRoll[selfN] = face.self, 0
+            end
+          end
+          if n > 0 then CombatSim_assign(E, dmg, roll, n, computer, enemies, tpl.npc) end
+          if selfN > 0 then
+            CombatSim_assign(E, E.selfDmg, E.selfRoll, selfN, 0, E.rift[tpl.side], true)
           end
         end
       end
     end
   end
+end
 
-  volley("missiles")
+-- one battle: "win", "loss" or "draw" (for "you"). The ships are in E.ships.
+function CombatSim_battle(E)
+  CombatSim_reset(E)
+
+  CombatSim_volley(E, true)
   -- missile boats leave once they have fired
-  for _, ships in pairs(sides) do
-    for _, ship in ipairs(ships) do
-      if ship.alive and ship.tpl.escapes then ship.gone = true end
-    end
-  end
-
-  local rounds = 0
-  while count("you") > 0 and count("opp") > 0 and rounds < CombatSim_MAX_ROUNDS do
-    rounds = rounds + 1
-    volley("cannons")
-    -- Morph Shield: repair 1 damage at the end of each engagement round
-    for _, ships in pairs(sides) do
-      for _, ship in ipairs(ships) do
-        if ship.alive and ship.tpl.regenerate and ship.dmg > 0 then ship.dmg = ship.dmg - 1 end
+  for _, side in ipairs(CombatSim_SIDES) do
+    local ships = E.ships[side]
+    for i = 1, #ships do
+      local ship = ships[i]
+      if ship.alive and ship.tpl.escapes and not ship.gone then
+        ship.gone = true
+        E.left[side] = E.left[side] - 1
       end
     end
   end
 
-  local youStanding, youAlive = count("you")
-  local oppStanding, oppAlive = count("opp")
-  local outcome = "draw"
-  if oppStanding == 0 and youStanding > 0 then outcome = "win"
-  elseif youStanding == 0 and oppStanding > 0 then outcome = "loss"
-  elseif youStanding == 0 and oppStanding == 0 then
-    -- nobody is left fighting: whoever still has ships (escaped) wins
-    if oppAlive == 0 and youAlive > 0 then outcome = "win"
-    elseif youAlive == 0 and oppAlive > 0 then outcome = "loss" end
+  local left = E.left
+  local rounds = 0
+  while left.you > 0 and left.opp > 0 and rounds < CombatSim_MAX_ROUNDS do
+    rounds = rounds + 1
+    CombatSim_volley(E, false)
+    -- Morph Shield: repair 1 damage at the end of each engagement round
+    if E.regenerate then
+      for _, side in ipairs(CombatSim_SIDES) do
+        local ships = E.ships[side]
+        for i = 1, #ships do
+          local ship = ships[i]
+          if ship.alive and ship.tpl.regenerate and ship.dmg > 0 then ship.dmg = ship.dmg - 1 end
+        end
+      end
+    end
   end
-  return outcome, sides
+
+  local youLeft, oppLeft = left.you, left.opp
+  if oppLeft == 0 and youLeft > 0 then return "win" end
+  if youLeft == 0 and oppLeft > 0 then return "loss" end
+  if youLeft == 0 and oppLeft == 0 then
+    -- nobody is left fighting: whoever still has ships (escaped) wins
+    if E.alive.opp == 0 and E.alive.you > 0 then return "win" end
+    if E.alive.you == 0 and E.alive.opp > 0 then return "loss" end
+  end
+  return "draw"
 end
 
 -- a side's ship groups from the panel counts; nil if it has none
@@ -626,7 +700,7 @@ function CombatSim_start(npcChoice)
   end)
 
   CombatSim_job = {
-    groups = groups, fleets = fleets, notes = notes, runs = CombatSim_runs,
+    engine = CombatSim_engine(groups), fleets = fleets, notes = notes, runs = CombatSim_runs,
     done = 0, outcomes = { win = 0, loss = 0, draw = 0 },
     survivors = { you = CombatSim_noShips(), opp = CombatSim_noShips() },
     title = title, npcLine = npcLine, oppColor = oppColor,
@@ -635,25 +709,39 @@ function CombatSim_start(npcChoice)
   startLuaCoroutine(self, "CombatSim_run")
 end
 
--- runs as a coroutine: CombatSim_PER_FRAME battles per frame
+-- seconds since some start, or nil if the sandbox has no clock
+local function CombatSim_clock()
+  local ok, now = pcall(function() return os.clock() end)
+  if ok and type(now) == "number" then return now end
+  return nil
+end
+
+-- runs as a coroutine: battles for CombatSim_FRAME_TIME seconds per frame
 function CombatSim_run()
   local job = CombatSim_job
+  local E = job.engine
+  local outcomes, survivors, fleets = job.outcomes, job.survivors, job.fleets
   while job.done < job.runs do
-    for _ = 1, CombatSim_PER_FRAME do
-      if job.done >= job.runs then break end
+    local start = CombatSim_clock()
+    local batch = 0
+    repeat
       job.done = job.done + 1
-      local outcome, sides = CombatSim_battle(job.groups)
-      job.outcomes[outcome] = job.outcomes[outcome] + 1
+      batch = batch + 1
+      local outcome = CombatSim_battle(E)
+      outcomes[outcome] = outcomes[outcome] + 1
       -- the winner's surviving ships
       local winner = (outcome == "win" and "you") or (outcome == "loss" and "opp") or nil
-      if winner ~= nil and job.fleets[winner] ~= nil then
-        for _, ship in ipairs(sides[winner]) do
-          if ship.alive then
-            job.survivors[winner][ship.tpl.ship] = job.survivors[winner][ship.tpl.ship] + 1
-          end
+      if winner ~= nil and fleets[winner] ~= nil then
+        local ships, counts = E.ships[winner], survivors[winner]
+        for i = 1, #ships do
+          local ship = ships[i]
+          if ship.alive then counts[ship.tpl.ship] = counts[ship.tpl.ship] + 1 end
         end
       end
-    end
+      local finished
+      if start ~= nil then finished = CombatSim_clock() - start >= CombatSim_FRAME_TIME
+      else finished = batch >= CombatSim_PER_FRAME end
+    until finished or job.done >= job.runs
     UI.setValue("CombatSim_Result", string.format("Simulating... %d / %d", job.done, job.runs))
     coroutine.yield(0)
   end
