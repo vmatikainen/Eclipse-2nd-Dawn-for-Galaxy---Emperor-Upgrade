@@ -47,6 +47,9 @@ ship blueprints.
   blue (3), Antimatter red (4), Rift pink (rift rules). A roll of 6 always hits and 1
   always misses. Otherwise a hit needs roll + computers − target shields ≥ 6. Missiles
   fire once, before cannons. Damage is absorbed by hull.
+- **Draco and the Ancients:** Descendants of Draco are friendly **only with the Ancients**.
+  Draco ships share a hex with Ancients without combat. They still fight Guardians and the
+  GCDS like any other race. The mod tags Guardian and GCDS objects `Alien Not Draco Friend`.
 
 When a rule detail matters for code, confirm it with the user rather than relying on
 memory. Rule books are in the mod as `Rulebook` PDFs.
@@ -105,7 +108,8 @@ https://api.tabletopsimulator.com/
 - `Global.-1.lua` (~2500 lines): setup, rounds, player setup, utilities, the event
   handlers, and the Advanced Turn Order code (`ATO_*`, near the end of the file). It's
   being split into components, see "Includes".
-- `include/ShipData.ttslua`, `include/ShipState.ttslua`: ship data and ship state, included in Global.
+- `include/ShipData.ttslua`, `include/ShipState.ttslua`, `include/HexState.ttslua`: ship data, ship
+  state and hex state, included in Global.
 - `Global.-1.xml`: on-screen UI (setup popup, Advanced Turn Order panel).
 - `Button <Race>.<guid>.lua`: one per race. Each holds a faction table (`Name`,
   `startingShip`, `numStartingShips`, resources, `Influence`, `Box_GUID`, population
@@ -160,6 +164,12 @@ the GUID of the object you actually took out rather than hard-coding the one in 
   Pink, Teal or Brown (not in `PlayerSelection`) breaks faction setup. The README documents
   this for players. With the Advanced Turn Order, hot seat picks are made for whoever's turn
   it is (`ATO_canPickRace` returns the color to use).
+- **Known issue, no fix yet: hot seat picks player colors before the game file loads.**
+  TTS's hot seat mode makes you pick the seat colors before the mod is loaded. So the
+  scripts start with players already seated, which they don't expect, and many scripts
+  misbehave in odd ways as a result. When a bug is strange and only shows in hot seat,
+  suspect this first, before debugging the feature's own code. The other contributor is
+  working on it.
 - **`PlayerState[color] = { faction, boardGUID }`** (section at the end of Global) is the
   saved color → race record. `PlayerSetup` records it once a faction is set up. `onSave`
   stores it in the save next to `settings` and `ATOState`. `onLoad` restores it whatever the
@@ -301,6 +311,51 @@ Both live in include files (`scripts/include/`, pulled into Global with `#includ
 - `tools/reference_sheets.py` draws `reference/ship-parts.svg`, `reference/ancient-tech.svg`
   and `reference/npc-ships.svg`: every part tile and NPC variant with the stats `ShipData`
   records for it. Re-run it after changing part or NPC data.
+
+### Hex state
+
+`HexState.ttslua` knows which sides have units in each hex, and the order they arrived in.
+It's the input for the combat zone.
+
+- **Hexes come from the lattice, not from tiles.** The Galactic Center is at (0, 0), and
+  hexes are 11.92 apart with flat sides facing ±z, the same geometry `placeHomeworld` uses.
+  `HexState_keyAt(position)` rounds any table position to an axial coordinate, key `"q,r"`.
+  `HexState_center(q, r)` goes back. Sector III chains have no limit, and the grid doesn't
+  snap, so tiles are only roughly aligned. A hex counts only while a sector tile (Sector
+  1/2/3, Guardian Sector, Galactic Center, a Homeworld) lies on it, so ships in the supply
+  areas are in no hex.
+- **Units:** player ship miniatures (`ShipState_shipOf`), NPC ships (`ShipState_npcOf`) and the
+  Exiles' Orbitals, which are their Starbases. An Orbital tile has no color. It counts as an
+  Exiles ship when the hex's influence disc has the Exiles' color. Other races' Orbitals are
+  population and don't count. Population cubes and discs aren't units.
+- **Sides:** a player color, or `"Ancient"` / `"Guardian"` / `"GCDS"`. `HexState_hostile(a, b)`:
+  NPCs don't fight each other, and Descendants of Draco don't fight the Ancients (but do
+  fight Guardians and the GCDS). A hex is
+  **contested** while it holds two hostile sides.
+- **Combat order follows arrival order** (`HexState_arrivals[key]`, first arrival first). The
+  last two sides to arrive fight first, with the later one attacking. The winner then attacks
+  the side that arrived before them, and so on. The defender wins initiative ties. E.g. Red
+  holds a hex, then Blue enters, then Purple: Purple attacks Blue, and the winner attacks Red.
+  With Ancients + Draco + a newcomer, the newcomer fights Draco first, then the Ancients.
+- The arrival order is **saved** (`settings.HexState`). Every query and every drop, spawn or
+  delete of a unit reconciles it with the table: sides that are gone are removed, and new
+  sides are added at the end (NPCs first if several are new at once, e.g. on load). A held
+  unit counts in the hex it was picked up from, so picking a ship up and putting it back
+  keeps the order.
+- **Hexes fight in sector number order, highest first.** The number is the tile's
+  Description: `"203"`, or the trailing number of a Homeworld (`"Descendants of Draco 228"`),
+  read with `HexState_sectorNumber(tile)`. Tiles without a number (the Lyra Homeworld) go last.
+- Queries: `HexState_all()`, `HexState_hex(key or position)`, `HexState_contested()`. They
+  return hexes in combat order, each `{ key, q, r, tile, number, sides, units = { [side] = { obj, ... } }, contested }`.
+  Right-clicking the table gives "Show combats".
+- **Combat tooltip:** a contested hex's tile gets its combats added below its Description,
+  attacker first, e.g. `Combat 1 of 2` / `Red (2 Interceptors, 1 Starbase) vs Blue (2 Cruisers)` /
+  `Winner vs Purple (3 Interceptors)`. The sector number stays first, and `populateSector`
+  reads it. Read a tile's own Description through `HexState_baseDescription(tile)`, never
+  `getDescription()`.
+  The mod has the Tooltip turned off on every hex tile. HexState turns it on only while the hex has a combat.
+- When the combat zone moves ships out of a hex, they'll leave its arrival order. The combat
+  zone has to keep the order itself, or tell HexState.
 
 ## Conventions
 

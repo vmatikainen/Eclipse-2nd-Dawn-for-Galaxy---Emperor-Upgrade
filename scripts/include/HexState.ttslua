@@ -1,0 +1,477 @@
+--------------------------------------------------------------------------------
+-- Hex state: which sides have units in each hex of the map, in the order they arrived.
+--
+-- Hexes: the map is a hex lattice centred on the Galactic Center at (0, 0), hexes 11.92
+-- apart centre to centre (flat sides facing +z / -z), the same geometry placeHomeworld
+-- uses. Any table position rounds to an axial coordinate (q, r), so sector tiles can be
+-- chained as far out as the players like. The table grid doesn't snap, so tiles lie only
+-- roughly on the lattice; rounding takes care of that. A hex counts only while a sector
+-- tile (Sector 1/2/3, Guardian Sector, Galactic Center, a Homeworld) lies on it: ships in
+-- the player areas (supply) are not in any hex.
+--
+-- Units: player ship miniatures (memo "Ship <Color> <ship>", ShipState_shipOf), NPC ships
+-- (ShipState_npcOf) and the Exiles' Orbitals, which are their Starbases. An Orbital tile
+-- carries no color: it is an Exiles ship when the hex's influence disc is the Exiles'
+-- color (Orbitals of other races are population and don't count).
+--
+-- Sides: a player color, or "Ancient" / "Guardian" / "GCDS". Two sides in one hex fight
+-- unless both are NPCs, or one is Descendants of Draco and the other the Ancients
+-- (HexState_hostile). Draco is friendly only with the Ancients: Draco still fights
+-- Guardians and the GCDS. A hex is contested while it holds two hostile sides.
+--
+-- Arrival order decides the combats: the last two sides to arrive fight first, the later
+-- one attacking; the winner then attacks the side that arrived before them, and so on
+-- (defender wins initiative ties). NPCs were always there first.
+--
+--   HexState_arrivals["q,r"] = { "Ancient", "Red", "Blue" }   -- first arrival first
+--
+-- Saved (settings.HexState). It is reconciled with the table on every query and after a
+-- unit is dropped, spawned or destroyed: sides no longer present are removed, new sides
+-- are added at the end. A unit being held counts in the hex it was picked up from, so
+-- picking a ship up and putting it back doesn't change the order.
+--------------------------------------------------------------------------------
+
+HexState_arrivals = {}
+HexState_pickedFrom = {}     -- GUID of a held unit -> hex key it was picked up from
+
+local HEX_SPACING = 11.92                  -- centre to centre, = 2 x inner radius 5.96
+local HEX_SIZE = HEX_SPACING / math.sqrt(3) -- corner radius
+local NPC_SIDE = { ancient = "Ancient", guardian = "Guardian", gcds = "GCDS" }
+local NPC_LABEL = { Ancient = "Ancients", Guardian = "Guardians", GCDS = "GCDS" }
+local DRACO = "Descendants of Draco"
+local EXILES = "The Exiles"
+
+--------------------------------------------------------------------------------
+-- lattice
+
+local function round(v) return math.floor(v + 0.5) end
+
+local function hexKey(q, r) return q .. "," .. r end
+
+-- the hex a table position lies in: key "q,r", q, r
+function HexState_keyAt(position)
+  local fq = (2 / 3 * position.x) / HEX_SIZE
+  local fr = (-1 / 3 * position.x + math.sqrt(3) / 3 * position.z) / HEX_SIZE
+  local fs = -fq - fr
+  local q, r, s = round(fq), round(fr), round(fs)
+  local dq, dr, ds = math.abs(q - fq), math.abs(r - fr), math.abs(s - fs)
+  if dq > dr and dq > ds then
+    q = -r - s
+  elseif dr > ds then
+    r = -q - s
+  end
+  return hexKey(q, r), q, r
+end
+
+-- the table position of a hex's centre (y = 0)
+function HexState_center(q, r)
+  return Vector(HEX_SIZE * 1.5 * q, 0, HEX_SIZE * math.sqrt(3) * (r + q / 2))
+end
+
+--------------------------------------------------------------------------------
+-- what lies where
+
+local function isHexTile(obj)
+  if obj.type ~= "Tile" then return false end
+  local name = obj.getName()
+  return name == "Sector 1" or name == "Sector 2" or name == "Sector 3"
+      or name == "Guardian Sector" or name == "Galactic Center"
+      or string.find(name, "Homeworld", 1, true) ~= nil
+end
+
+local function isOrbital(obj)
+  return obj.type == "Tile" and obj.getName() == "Orbital"
+end
+
+local function isInfluenceDisc(obj)
+  return obj.type ~= "Infinite" and obj.type ~= "Bag" and obj.getName() == "Influence Disc"
+end
+
+-- the player color an influence disc is tinted with, or nil
+local function discColor(obj)
+  local tint = obj.getColorTint()
+  for color, _ in pairs(PlayerState) do
+    local c = Color.fromString(color)
+    if math.abs(c.r - tint.r) + math.abs(c.g - tint.g) + math.abs(c.b - tint.b) < 0.1 then
+      return color
+    end
+  end
+  return nil
+end
+
+-- the side a ship miniature belongs to, or nil if obj isn't one (Orbitals are handled in scan)
+local function shipSide(obj)
+  local color = ShipState_shipOf(obj)
+  if color ~= nil then return color end
+  if obj.type ~= "Generic" then return nil end   -- leaves out the NPC stock bags
+  local variant = ShipState_npcOf(obj)
+  if variant ~= nil then return NPC_SIDE[NPC_SHIPS[variant].npc] end
+  return nil
+end
+
+-- true for objects that can change who is in a hex (worth reconciling after they move)
+local function isUnitLike(obj)
+  return shipSide(obj) ~= nil or isOrbital(obj) or isInfluenceDisc(obj)
+end
+
+-- the hex an object counts in: where it was picked up while held, else where it lies
+local function objectKey(obj)
+  if obj.held_by_color ~= nil and HexState_pickedFrom[obj.getGUID()] ~= nil then
+    return HexState_pickedFrom[obj.getGUID()]
+  end
+  return (HexState_keyAt(obj.getPosition()))
+end
+
+-- one pass over the table: hexes[key] = { q, r, tile, tiles, number, units = { [side] = { obj, ... } } }
+-- (tiles: every hex tile on that hex, normally just tile; number: tile's sector number)
+-- exclude = GUID of an object to leave out (one being destroyed)
+local function scan(exclude)
+  local hexes = {}
+  local orbitals, discs = {}, {}
+  local ships = {}
+  for _, obj in ipairs(getAllObjects()) do
+    if obj.getGUID() ~= exclude then
+      if isHexTile(obj) then
+        local key, q, r = HexState_keyAt(obj.getPosition())
+        if hexes[key] == nil then
+          hexes[key] = { q = q, r = r, tile = obj, tiles = {}, units = {}, number = HexState_sectorNumber(obj) }
+        end
+        table.insert(hexes[key].tiles, obj)
+      elseif isOrbital(obj) then
+        table.insert(orbitals, obj)
+      elseif isInfluenceDisc(obj) then
+        local color = discColor(obj)
+        if color ~= nil then discs[objectKey(obj)] = color end
+      else
+        local side = shipSide(obj)
+        if side ~= nil then table.insert(ships, { obj = obj, side = side }) end
+      end
+    end
+  end
+  for _, obj in ipairs(orbitals) do
+    local owner = discs[objectKey(obj)]
+    if owner ~= nil and PlayerState_faction(owner) == EXILES then
+      table.insert(ships, { obj = obj, side = owner })
+    end
+  end
+  for _, unit in ipairs(ships) do
+    local hex = hexes[objectKey(unit.obj)]
+    if hex ~= nil then
+      hex.units[unit.side] = hex.units[unit.side] or {}
+      table.insert(hex.units[unit.side], unit.obj)
+    end
+  end
+  return hexes
+end
+
+-- bring the arrival order of one hex in line with what is on it now
+local function reconcile(key, hex)
+  local present = hex and hex.units or {}
+  local order = {}
+  local listed = {}
+  for _, side in ipairs(HexState_arrivals[key] or {}) do
+    if present[side] ~= nil and not listed[side] then
+      table.insert(order, side)
+      listed[side] = true
+    end
+  end
+  -- newcomers at the end; NPCs before players if several arrive at once (e.g. after a load)
+  local new = {}
+  for side, _ in pairs(present) do
+    if not listed[side] then table.insert(new, side) end
+  end
+  table.sort(new, function(a, b)
+    local an, bn = NPC_LABEL[a] ~= nil, NPC_LABEL[b] ~= nil
+    if an ~= bn then return an end
+    return a < b
+  end)
+  for _, side in ipairs(new) do table.insert(order, side) end
+  HexState_arrivals[key] = (#order > 0) and order or nil
+end
+
+--------------------------------------------------------------------------------
+-- combat tooltip: a contested hex's tile gets the combats below its own description,
+-- attacker first, e.g.
+--   Red (2 Interceptors, 1 Starbase) vs Blue (2 Cruisers)
+--   Winner vs Purple (3 Interceptors)
+-- The tile's own description (the sector number, which populateSector reads) stays first;
+-- HexState_baseDescription(tile) gives it without the combat part.
+
+-- true if two of the sides fight (HexState_hostile)
+local function contested(order)
+  for i = 1, #(order or {}) do
+    for j = i + 1, #order do
+      if HexState_hostile(order[i], order[j]) then return true end
+    end
+  end
+  return false
+end
+
+local COMBAT_MARK = "\n\n[ffcc66]Combat"   -- start of the combat part; its header goes on with " 1 of 2[-]"
+local UNIT_RANK = { Interceptor = 1, Cruiser = 2, Dreadnought = 3, Starbase = 4, Orbital = 4 }
+
+function HexState_baseDescription(tile)
+  local text = tile.getDescription() or ""
+  local at = string.find(text, COMBAT_MARK, 1, true)
+  if at ~= nil then return string.sub(text, 1, at - 1) end
+  return text
+end
+
+-- the sector number printed on a tile, from its description: "203", "Descendants of Draco 228"
+-- (nil if it has none). Combats are fought from the highest sector number down.
+function HexState_sectorNumber(tile)
+  return tonumber(string.match(HexState_baseDescription(tile), "(%d+)%s*$"))
+end
+
+-- combat order: highest sector number first, tiles without a number last
+local function byCombatOrder(a, b)
+  if a.number ~= b.number then
+    if a.number == nil then return false end
+    if b.number == nil then return true end
+    return a.number > b.number
+  end
+  return a.key < b.key
+end
+
+-- "Interceptor", "Orbital", "Advanced Ancient (Ion)", ...
+local function unitName(obj)
+  if isOrbital(obj) then return "Orbital" end
+  local color, ship = ShipState_shipOf(obj)
+  if color ~= nil then
+    local player = ShipState[color]
+    if player ~= nil and player.ships[ship] ~= nil then return player.ships[ship].name end
+    return string.upper(string.sub(ship, 1, 1)) .. string.sub(ship, 2)
+  end
+  return ShipState_npcOf(obj) or "?"
+end
+
+-- "Cruisers", "GCDS", "Advanced Ancients (Ion)"
+local function plural(name)
+  if string.find(name, "GCDS", 1, true) then return name end
+  local at = string.find(name, " (", 1, true)
+  if at ~= nil then return string.sub(name, 1, at - 1) .. "s" .. string.sub(name, at) end
+  return name .. "s"
+end
+
+-- "2 Interceptors, 1 Starbase"
+local function unitCounts(objs)
+  local counts, names = {}, {}
+  for _, obj in ipairs(objs) do
+    local name = unitName(obj)
+    if counts[name] == nil then table.insert(names, name) counts[name] = 0 end
+    counts[name] = counts[name] + 1
+  end
+  table.sort(names, function(a, b)
+    local ra, rb = UNIT_RANK[a] or 9, UNIT_RANK[b] or 9
+    if ra ~= rb then return ra < rb end
+    return a < b
+  end)
+  local pieces = {}
+  for _, name in ipairs(names) do
+    local n = counts[name]
+    table.insert(pieces, n .. " " .. (n == 1 and name or plural(name)))
+  end
+  return table.concat(pieces, ", ")
+end
+
+-- a player side: "Red (2 Interceptors)"; an NPC side is its ships: "2 Ancients"
+local function sideText(hex, side)
+  local counts = unitCounts(hex.units[side])
+  if NPC_LABEL[side] ~= nil then return counts end
+  return side .. " (" .. counts .. ")"
+end
+
+-- the combats of a hex in order, one line each (empty if it isn't contested)
+local function combatLines(hex, order)
+  local lines = {}
+  local n = #order
+  if n < 2 then return lines end
+  table.insert(lines, sideText(hex, order[n]) .. " vs " .. sideText(hex, order[n - 1]))
+  for i = n - 2, 1, -1 do
+    local defender = order[i]
+    local friends = {}
+    for j = i + 1, n do
+      if not HexState_hostile(order[j], defender) then table.insert(friends, NPC_LABEL[order[j]] or order[j]) end
+    end
+    local line = "Winner vs " .. sideText(hex, defender)
+    if #friends > 0 then line = line .. " (unless " .. table.concat(friends, " or ") .. " wins)" end
+    table.insert(lines, line)
+  end
+  return lines
+end
+
+local function updateTooltips(hexes)
+  local fights = {}
+  for key, hex in pairs(hexes) do
+    hex.key = key
+    local order = HexState_arrivals[key]
+    if order ~= nil and contested(order) then table.insert(fights, hex) end
+  end
+  table.sort(fights, byCombatOrder)
+  local place = {}
+  for i, hex in ipairs(fights) do place[hex.key] = i end
+
+  for key, hex in pairs(hexes) do
+    local header = nil
+    if place[key] ~= nil then
+      header = COMBAT_MARK .. string.format(" %d of %d[-]\n", place[key], #fights)
+               .. table.concat(combatLines(hex, HexState_arrivals[key]), "\n")
+    end
+    for _, tile in ipairs(hex.tiles) do
+      local text = HexState_baseDescription(tile) .. (header or "")
+      if tile.getDescription() ~= text then tile.setDescription(text) end
+      -- the mod has tooltips off on all hex tiles: show one only while there is a combat
+      local show = header ~= nil
+      if tile.tooltip ~= show then tile.tooltip = show end
+    end
+  end
+end
+
+local function reconcileAll(exclude)
+  local hexes = scan(exclude)
+  local keys = {}
+  for key, _ in pairs(HexState_arrivals) do keys[key] = true end
+  for key, _ in pairs(hexes) do keys[key] = true end
+  for key, _ in pairs(keys) do reconcile(key, hexes[key]) end
+  updateTooltips(hexes)
+  return hexes
+end
+
+--------------------------------------------------------------------------------
+-- queries (each one reconciles with the table first)
+
+-- true if two sides fight when they share a hex
+function HexState_hostile(a, b)
+  if a == b then return false end
+  local aNpc, bNpc = NPC_LABEL[a] ~= nil, NPC_LABEL[b] ~= nil
+  if aNpc and bNpc then return false end
+  -- Draco is friendly with the Ancients only, not with Guardians or the GCDS
+  if (a == "Ancient" and PlayerState_faction(b) == DRACO)
+      or (b == "Ancient" and PlayerState_faction(a) == DRACO) then
+    return false
+  end
+  return true
+end
+
+-- every hex with units: { key, q, r, tile, number, sides = { first arrival first },
+-- units = { [side] = { obj } }, contested = bool }, in combat order (highest sector number first)
+function HexState_all()
+  local hexes = reconcileAll()
+  local result = {}
+  for key, order in pairs(HexState_arrivals) do
+    local hex = hexes[key]
+    table.insert(result, { key = key, q = hex.q, r = hex.r, tile = hex.tile, number = hex.number,
+                           sides = order, units = hex.units, contested = contested(order) })
+  end
+  table.sort(result, byCombatOrder)
+  return result
+end
+
+-- one hex, by key "q,r" or by any position inside it; nil if it has no units
+function HexState_hex(where)
+  local key = (type(where) == "string") and where or HexState_keyAt(where)
+  for _, hex in ipairs(HexState_all()) do
+    if hex.key == key then return hex end
+  end
+  return nil
+end
+
+-- the hexes where a combat has to be fought, in the order they are fought
+function HexState_contested()
+  local result = {}
+  for _, hex in ipairs(HexState_all()) do
+    if hex.contested then table.insert(result, hex) end
+  end
+  return result
+end
+
+--------------------------------------------------------------------------------
+-- report, for the "Show combats" menu item
+
+local function sideLabel(side)
+  if NPC_LABEL[side] ~= nil then return NPC_LABEL[side] end
+  local faction = PlayerState_faction(side)
+  return faction and (side .. " (" .. faction .. ")") or side
+end
+
+local function hexLabel(hex)
+  local tile = hex.tile
+  local name = tile.getName()
+  if hex.number ~= nil then name = name .. " " .. string.format("%03d", hex.number) end
+  return string.format("%s at (%d, %d)", name, hex.q, hex.r)
+end
+
+-- the "Show combats" menu item: contested hexes in combat order
+function HexState_report(color)
+  local hexes = HexState_contested()
+  if #hexes == 0 then
+    printToColor("No combats.", color, {0.7, 0.9, 1})
+    return
+  end
+  printToColor("Combats, highest sector number first:", color, {1, 0.8, 0.4})
+  for i, hex in ipairs(hexes) do
+    local pieces = {}
+    for _, side in ipairs(hex.sides) do
+      table.insert(pieces, string.format("%s x%d", sideLabel(side), #hex.units[side]))
+    end
+    printToColor(i .. ". " .. hexLabel(hex) .. ": " .. table.concat(pieces, ", ") .. " (first arrival first)",
+                 color, {1, 0.8, 0.4})
+    for _, line in ipairs(combatLines(hex, hex.sides)) do
+      printToColor("    " .. line, color, {1, 0.8, 0.4})
+    end
+  end
+end
+
+--------------------------------------------------------------------------------
+-- save / load
+
+function HexState_save()
+  return HexState_arrivals
+end
+
+-- after a load (once ShipState has marked the ships); saved = settings.HexState or nil
+function HexState_restore(saved)
+  HexState_arrivals = {}
+  HexState_pickedFrom = {}
+  for key, order in pairs(saved or {}) do
+    if type(order) == "table" then
+      local copy = {}
+      for _, side in ipairs(order) do table.insert(copy, side) end
+      HexState_arrivals[key] = copy
+    end
+  end
+  reconcileAll()
+end
+
+--------------------------------------------------------------------------------
+-- events (called from Global's onObjectPickUp / onObjectDrop / onObjectSpawn / onObjectDestroy)
+
+function HexState_onPickUp(obj)
+  if not isUnitLike(obj) then return end
+  HexState_pickedFrom[obj.getGUID()] = (HexState_keyAt(obj.getPosition()))
+end
+
+-- once the object has settled, reconcile every hex (the one it left and the one it entered)
+local function afterRest(obj)
+  local guid = obj.getGUID()
+  local function done()
+    HexState_pickedFrom[guid] = nil
+    reconcileAll()
+  end
+  Wait.condition(done, function() return obj == nil or obj.isDestroyed() or obj.resting end, 3, done)
+end
+
+function HexState_onDrop(obj)
+  if isUnitLike(obj) then afterRest(obj) end
+end
+
+-- ships taken from bags (setup, Build, sectors being populated)
+function HexState_onSpawn(obj)
+  if isUnitLike(obj) then afterRest(obj) end
+end
+
+function HexState_onDestroy(obj)
+  if not isUnitLike(obj) then return end
+  HexState_pickedFrom[obj.getGUID()] = nil
+  reconcileAll(obj.getGUID())
+end
