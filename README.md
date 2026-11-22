@@ -158,6 +158,18 @@ changing their player colors. Draft results, race picks and the turn order go wi
 player. Factions can only be picked after *Setup* is pressed. This works in hot seat too:
 the hot seat players are moved between the colors in the same way.
 
+## Random races
+
+Tick **Random races** under *Options* in the setup popup. Nobody picks a race: after
+*Setup*, every seated player is given a random one.
+
+- The six Terran races count as one race in the draw. A player who draws it gets the
+  Terran race of their own color (Purple gets the black one, Terran Alliance).
+- Pyxis Unity is never drawn. Expansion races are only drawn with *Expansion Species*.
+- With the **Advanced Turn Order** there is no draft. The random order revealed after
+  *Setup* is the round 1 turn order, and races are given out in that order.
+- **Randomize seat order** works with it as with picked races.
+
 ## Player colors and hot seat
 
 The table has seats for six player colors: **White, Red, Yellow, Blue, Green and Purple**.

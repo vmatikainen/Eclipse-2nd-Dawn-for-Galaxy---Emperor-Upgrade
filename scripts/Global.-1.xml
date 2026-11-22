@@ -161,6 +161,11 @@
             	id="AdvancedGuardians" onValueChanged="SetupUI_OnChange"
               	tooltip="Randomly chose a blueprint for the Guardian ships, including advanced versions">
               Randomize Guardians </Toggle>
+
+            <Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+            	id="RandomRaces" onValueChanged="SetupUI_OnChange"
+              	tooltip="Give every player a random race instead of picking one. The Terran races count as one race, and Pyxis Unity is never drawn. With the Advanced Turn Order there is no draft: the random order is the turn order.">
+              Random races </Toggle>
 			</HorizontalLayout>
        </VerticalLayout>
 

@@ -109,6 +109,10 @@ https://api.tabletopsimulator.com/
 - `include/SeatOrder.ttslua`: the "Randomize seat order" setup option (`SEAT_*`). Global
   calls it from `gameSetup`, `PlayerSetup` (which records picks for later and sets up
   factions through `placeFaction`), the Advanced Turn Order and the turn order panel.
+- `include/RandomRaces.ttslua`: the "Random races" setup option (`RandomRaces_*`). It gives
+  races out through `PlayerSetup`, reading each race button's faction table with
+  `getTable`. Global calls it from `gameSetup`, `PlayerSetup` and the Advanced Turn Order
+  (`ATO_beginDraft` skips the draft, `ATO_advanceRacePick` gives the current race).
 - `Global.-1.xml`: on-screen UI (setup popup, Advanced Turn Order panel).
 - `Button <Race>.<guid>.lua`: one per race. Each holds a faction table (`Name`,
   `startingShip`, `numStartingShips`, resources, `Influence`, `Box_GUID`, population
