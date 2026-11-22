@@ -217,3 +217,22 @@ function SEAT_placePending(onDone)
   end
   if onDone ~= nil then Wait.time(onDone, 0.5 + #pending * SEAT_PLACE_INTERVAL) end
 end
+
+-- called by onLoad, after PlayerState_restore. Picks waiting for the seats to be
+-- randomized are saved in settings.SeatPending, but nothing is set up for them yet, so
+-- PlayerState (which refills PlayerSelection) doesn't know them: put them back.
+function SEAT_restore()
+  local pending = settings.SeatPending or {}
+  for _, entry in ipairs(pending) do
+    if entry.color ~= nil and type(entry.faction) == "table" and entry.faction.Name ~= nil then
+      PlayerSelection[entry.color] = entry.faction.Name
+    end
+  end
+
+  -- saved after the seats were randomized but before every faction was set up:
+  -- set up the rest now (with the Advanced Turn Order, ATO_resume does this)
+  if #pending > 0 and settings.SeatsRandomized
+     and not (settings.AdvancedTurnOrder and ATO.phase ~= "off") then
+    Wait.time(function() SEAT_placePending(nil) end, 2)
+  end
+end

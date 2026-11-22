@@ -298,6 +298,8 @@ function onLoad(saveData)
     -- factions can be selected before Setup too, so restore them whatever the round
     PlayerState_restore(saved and saved.PlayerState)
     settings.PlayerState = nil
+    -- faction picks still waiting for the seats to be randomized
+    SEAT_restore()
     -- ship state isn't saved: rebuild it from the races and the tiles on the boards
     Wait.time(ShipState_restore, 1)
     addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
