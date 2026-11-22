@@ -198,22 +198,30 @@ Tick **Random factions** under *Options* in the setup popup. Nobody picks a fact
 ## Combat simulator
 
 Every player board has a **Combat Sim** button, between the Actions card and the
-Interceptor blueprint. It opens a panel where you set how many interceptors, cruisers and
-dreadnoughts attack, then pick the opponent: **Ancient**, **2 Ancients**, **GCDS**, or
-**Guardian** (shown when a Guardian is on the table). It plays 1000 or 5000 random
-battles (*Battles: 1k / 5k* at the top of the panel, 1k by default) and shows the odds of
-winning and, when winning, how many of each ship survive on average.
+Interceptor blueprint. It opens a panel where you set how many interceptors, cruisers,
+dreadnoughts and starbases (Exiles: orbitals) you have, whether you are **Attacking** or
+**Defending**, and the opponent in the *Opponent* dropdown: **Ancients** or another
+player (by name and faction). With Ancients, the **Ancient**, **2 Ancients**, **GCDS** and
+**Guardian** (when one is on the table) buttons simulate right away. With a player, set
+their ships too and press **Simulate**. It plays 1000 or 5000 random battles
+(*Battles: 1k / 5k* at the top of the panel, 1k by default) and shows the odds of
+winning, losing and drawing, and how many of each ship survive on average when winning.
 
-- Your ships are your blueprints as they are now, including upgrades. The NPCs are the
-  variants this game uses (randomized Ancients, Guardians and GCDS included).
-- Missiles fire first, then cannons in initiative order; on a tie the NPC fires first.
-- Ships without cannons (missile boats) escape after firing their missiles. They count as
-  survivors when the battle is won.
-- NPCs hit the biggest ship they can destroy, else the biggest ship.
+- Against a player, the panel also shows how many of their ships survive when they win.
+  Against NPCs you always attack.
+- Ships are each player's blueprints as they are now, including upgrades. The NPCs are
+  the variants this game uses (randomized Ancients, Guardians and GCDS included).
+- Missiles fire first, then cannons in initiative order; on a tie the defender fires
+  first. NPCs always defend.
+- Ships without cannons (missile boats) escape after firing their missiles; starbases
+  never escape. Escaped ships count as survivors when their side wins. If both sides only
+  have escaped ships left, it's a draw.
+- NPCs hit the biggest ship they can destroy, else the biggest ship (smallest to biggest:
+  interceptor, cruiser, starbase, dreadnought).
 - Rift cannons roll the rift die: miss, 1 damage, 2 damage, 3 damage + 1 self damage,
   1 self damage, miss. Their hits ignore computers and shields. Self damage goes to your
   own ships with rift weapons: it destroys the largest ship it can, else hits the largest.
-- Not simulated: retreating (other than missile boats) and Starbases.
+- Not simulated: retreating (other than missile boats).
 
 ## Player colors and hot seat
 

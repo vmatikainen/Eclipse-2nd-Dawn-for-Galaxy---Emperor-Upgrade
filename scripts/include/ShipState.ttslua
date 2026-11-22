@@ -495,9 +495,35 @@ end
 function ShipState_onDrop(obj)
   if not isShipTile(obj) then return end
   -- wait for the tile to settle on its snap point
-  Wait.condition(function() if obj ~= nil and not obj.isDestroyed() then ShipState_place(obj) end end,
-                 function() return obj == nil or obj.isDestroyed() or obj.resting end, 3,
-                 function() if obj ~= nil and not obj.isDestroyed() then ShipState_place(obj) end end)
+  local function place()
+    if obj == nil or obj.isDestroyed() then return end
+    if ShipState_place(obj) then ShipState_align(obj) end
+  end
+  Wait.condition(place, function() return obj == nil or obj.isDestroyed() or obj.resting end, 3, place)
+end
+
+-- a tile counted on a blueprint slot is turned to the board's rotation (the tiles lie at
+-- rotation 0 next to boards at rotation 0 in the faction boxes, whatever angle they came
+-- out of their bag at) and centred on its snap point. Face down stays face down.
+function ShipState_align(obj)
+  local where = ShipState_tiles[obj.getGUID()]
+  local board = where and PlayerState_board(where.color)
+  if board == nil then return end
+  local here = board.positionToLocal(obj.getPosition())
+  local nearest, best = nil, nil
+  for _, snap in ipairs(board.getSnapPoints()) do
+    local dx, dz = here.x - snap.position.x, here.z - snap.position.z
+    local distance = dx * dx + dz * dz
+    if best == nil or distance < best then nearest, best = snap, distance end
+  end
+  if nearest ~= nil then
+    local position = board.positionToWorld(nearest.position)
+    position.y = obj.getPosition().y
+    obj.setPosition(position)
+  end
+  local rotation = obj.getRotation()
+  local flipped = math.abs(((rotation.z + 180) % 360) - 180) > 90
+  obj.setRotation({0, board.getRotation().y, flipped and 180 or 0})
 end
 
 -- NPC ships taken from their bags (and GCDS at setup) get their name and tooltip

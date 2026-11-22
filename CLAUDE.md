@@ -143,7 +143,12 @@ https://api.tabletopsimulator.com/
   (`ATO_advanceRacePick` gives the current race).
 - `include/CombatSim.ttslua`: the "Combat Sim" button on every player board and its panel
   (`CombatSim_Panel` in the XML): Monte Carlo battles of the board owner's ships
-  (`ShipState_stats`) against the NPC variants on the table (`ShipState_npcOf`). The battle
+  (`ShipState_stats`, side `"you"`) against the NPC variants on the table
+  (`ShipState_npcOf`) or another player's ships (side `"opp"`, attacking or defending).
+  The opponent "dropdown" is a button plus a list of option buttons (`CombatSim_List`),
+  because TTS can't change a Dropdown's options from a script: "Ancients" and every other
+  player with a faction, by name and faction. With Ancients the NPC buttons show; with a
+  player, their ship rows and Simulate. `CombatSim_updateUI` sets the panel height to match. The battle
   rules it simulates, and what it leaves out, are at the top of the file. The button is
   added in `placeFaction` and again on load (`CombatSim_restore`: script buttons aren't
   saved). Rift dice: `CombatSim_RIFT_FACES`. The simulation runs as a coroutine (`startLuaCoroutine`), a few battles per frame.
@@ -326,7 +331,8 @@ Both live in include files (`scripts/include/`, pulled into Global with `#includ
   - `ShipState_init(color, faction)` copies the race's blueprints to the player. It's
     called by `PlayerSetup`.
   - When a ship part tile (or ancient Discovery tile) is dropped on a blueprint slot of a
-    player's board, it's recorded in that slot (`placed[cell]`).
+    player's board, it's recorded in that slot (`placed[cell]`). A recorded tile is centred on
+    its snap point and turned to the board's rotation (`ShipState_align`).
   - Picking it up or deleting it removes it, so the printed default counts again.
   - Muon Source is only accepted on the Muon Source spot, and nothing else there. Stacked
     tiles and tiles on `Unused` placeholders aren't counted.
