@@ -110,6 +110,7 @@ https://api.tabletopsimulator.com/
   being split into components, see "Includes".
 - `include/ShipData.ttslua`, `include/ShipState.ttslua`, `include/HexState.ttslua`: ship data, ship
   state and hex state, included in Global.
+- `include/CombatZone.ttslua`: the combat zone area on the left side table (`CombatZone_*`).
 - `include/SeatOrder.ttslua`: the "Randomize seat order" setup option (`SEAT_*`). Global
   calls it from `gameSetup`, `PlayerSetup` (which records picks for later and sets up
   factions through `placeFaction`), the Advanced Turn Order and the turn order panel.
@@ -365,8 +366,90 @@ It's the input for the combat zone.
   reads it. Read a tile's own Description through `HexState_baseDescription(tile)`, never
   `getDescription()`.
   The mod has the Tooltip turned off on every hex tile. HexState turns it on only while the hex has a combat.
-- When the combat zone moves ships out of a hex, they'll leave its arrival order. The combat
-  zone has to keep the order itself, or tell HexState.
+- Ships the combat zone has moved out of a hex still count in it: `scan` asks
+  `CombatZone_unitHome(obj)` for each object, so the arrival order is kept during a combat.
+
+### Combat zone
+
+`CombatZone.ttslua` is where contested hexes are fought out. It sets up the fight. Players
+resolve it themselves (damage, destroyed and escaped ships).
+
+- **The area is the race selection mat** (`ac4050`, the left side table, about x −89…−56,
+  z −30…30). The original mod destroyed it after race selection. Now `hideRaceSelection`
+  removes only the race tiles and buttons, then calls `CombatZone_show()`, which names
+  the mat "Combat Zone" and outlines the area with `Global.setVectorLines`. `onLoad` does
+  the same once `raceSelectionDone()` is true.
+- The area is the middle 40% of the mat's long side (z ≈ −12…12) over its full depth
+  minus a 1.5 margin (x), read at runtime from the mat's bounds (`CombatZone_area()`). The
+  strips at both ends (z ≈ ±12…30) are for combat UI information.
+  The mat lies lower than the main table, with its top near y −0.5. The race tile bags are
+  hidden under it at y −2.
+- **Regions:** a divider across the middle (z) splits the area into two sides, side 1 at
+  low z and side 2 at high z, one per row of seats. Three columns run across both sides:
+  Destroyed (20%) | Combat (60%) | Escaped (20%), so each side has its own three regions.
+  Ships in combat go to `combat`, destroyed ships to `destroyed`, retreated ships to
+  `escaped`. Nothing is resolved automatically: the regions only keep each side's ships
+  apart so they can be returned afterwards. Labels at each region's outer edge face that
+  side's seats. `CombatZone_region(side, name)` gives a region's box, and
+  `CombatZone_regionAt(position)` gives `side, name`.
+- All mat UI panels have `raycastTarget="false"`, so they don't block clicks on ships
+  lying on them.
+- Queries: `CombatZone_contains(position)` and `CombatZone_objects()` (a box cast over
+  the area, without the mat).
+- **Combat lists:** both free strips show the combats on the board, like "Show combats":
+  `Combats (n)` counts fights, not hexes. Each hex is `Sector 203`, then its fights. With
+  more than 7 fights, each hex gets one line, `Sector 203 (Green vs Blue)`. The list takes
+  the reader's left half of each strip. The right half is kept for the current combat's
+  details. Players are shown by Steam name in their color (`ATO_name`), or by color name in hot seat. It's XML UI on the mat
+  (`mat.UI.setXml`, built at runtime from the mat's bounds), one panel per strip, each
+  turned to face the row of seats on its side. HexState calls `HexState_publish` →
+  `CombatZone_setCombats(list)` on every reconcile, and the panels are updated with
+  `UI.setValue` only when the text changes. Object UI is 100 UI units per local unit and
+  scales with the object, so each panel's `scale` undoes the mat's uneven scale.
+  `COMBAT_ZONE_UI_TURN` (0 or 180) flips both panels if they read upside down.
+- **Start Combat:** a button in each strip (`mat.createButton` with `function_owner = Global`,
+  about half the size of Next Round) takes the first fight: the first contested hex, its last two
+  arrivals, with the later one attacking. Each side goes to the half of the box nearest its seats
+  where possible (`Player.getHandTransform`). Each ship type (NPC variant) of a side gets a
+  column, highest initiative on the seats' left. The ships are nearest the divider, with
+  that type's missile dice (Description `Missile`) under them, since they're thrown first,
+  then its cannon dice. Dice
+  are taken from the dice bags (two sets, `COMBAT_ZONE_DICE_BAGS`).
+- **`CombatZone_current`** = `{ key, title, attacker, defender, rows, ships = { [guid] =
+  { side, position, rotation } }, dice = { guid } }`. It's saved as `settings.CombatZone` and
+  restored in `onLoad` before `HexState_restore`. While it's set, each strip has two
+  buttons:
+  - **End Combat:** the players first move the losing side's ships to Destroyed or Escaped.
+    It refuses while both sides still have ships in Combat. Destroyed ships go to the right
+    of their player's board (image right = local −x), and NPCs are removed. Escaped ships go
+    on top of the board, for the player to place where they retreat. NPCs can't retreat, so
+    an NPC in Escaped goes back to its hex. Dice and damage cubes: if the sector has another
+    fight, the winner keeps the dice and cubes in its Combat region (managing them is up to
+    the players). Every other die and cube on the mat is removed, including those in the
+    winner's Destroyed and Escaped regions. The kept dice stay in
+    `combat.dice`. After the sector's last fight, every die and cube is removed. When the zone moves a ship by script
+    (`moveShip`, used when a side enters), the cubes on it move along. If the sector has another
+    fight (`HexState_hex(key)` is still contested), the side with ships left is the winner.
+    Its ships stay exactly where they are, in its half, and get no new dice. The next side
+    enters the empty half. Otherwise the winner goes back
+    to the hex and the next sector's fight starts.
+  - **Cancel Combat:** puts every ship back.
+  Ships are moved off the zone with `setPosition`, not smoothly: a ship in the air would
+  briefly count in no hex, or in a hex it flies over.
+- **Current combat panel:** the right half of each strip (beside the list, leaving
+  `COMBAT_ZONE_BUTTON_ROOM` for the buttons). It shows the fight's ships still in a Combat
+  region, one line per side and ship type, highest initiative first, with the defender first
+  on ties: `Init 3 - Alice: 2x Interceptor (2x Yellow, 2x Orange, +1 Computer)`. Dice are the type's
+  total cannon dice. Missiles are left out, shield is shown as `-2 Shield` and hull (per ship) as `2 Hull`. Built by
+  `CombatZone_detailsText()`, and refreshed with the lists: on every HexState reconcile, so
+  on every drop or delete. `CombatZone_refresh()` covers moves made by script, which fire no
+  events.
+- **Damage Cubes bags** (`a3ea24`, `fdd6be`, one per long side of the table) are moved to
+  the strips by `CombatZone_show`, one per side, at the reader's right end of the button
+  row. Each is unlocked, dropped just above the mat and locked again once it settles. A bag
+  that's already in place isn't moved again.
+- `Global.setVectorLines` replaces every global vector line, so the combat zone owns them.
+  Anything else that wants lines must draw them through the component.
 
 ## Conventions
 
