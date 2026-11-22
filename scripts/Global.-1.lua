@@ -108,7 +108,10 @@ settings = {
 
   NoRoundLimit = false,
 
-  AdvancedTurnOrder = false
+  AdvancedTurnOrder = false,
+
+  RandomizeSeats = false,
+  SeatTiming = "after"   -- "draft", "race" or "after" (see RANDOMIZE SEAT ORDER)
 }
 
 -- print the settings as currently configured
@@ -120,6 +123,7 @@ function printSettings()
   printToAll(string.format(" - Galactic Events: %s", tostring(settings.GalacticEvents)))
   printToAll(string.format(" - Round Limit: %s", tostring(not settings.NoRoundLimit)))
   printToAll(string.format(" - Advanced Turn Order: %s", tostring(settings.AdvancedTurnOrder == true)))
+  printToAll(string.format(" - Randomize seat order: %s", settings.RandomizeSeats and tostring(SEAT_timing()) or "false"))
 end
 
 
@@ -202,6 +206,7 @@ function SetupUI_OnChange(player, checked, elementId)
       if elementId == key then settings[key] = not(checked=="False") end
     end
   end
+  SEAT_updateSetupUI()
 
   updateGameStateBasedOnSettings()
 end
@@ -242,6 +247,7 @@ function updateSetupUI()
   else UI.setAttribute("AdvancedTurnOrder", "isOn", false) end
 
   for i = 2, 6 do UI.setAttribute(i .. 'Players', 'isOn', settings.PlayerCount == i) end
+  SEAT_updateSetupUI()
 end
 
 
@@ -361,11 +367,23 @@ function gameSetup()
   local players = settings.PlayerCount
 
   broadcastToAll(string.format("--  Round #1 (Setup for %d players)  --", players))
-  if (settings.AdvancedTurnOrder) then
-    -- first player is decided by the turn order draft
-    if not ATO_startDraft() then chooseFirstPlayer() end
+  -- with the advanced turn order, the starting techs are drawn after faction selection
+  local advancedTurnOrder = settings.AdvancedTurnOrder and #ATO_seatedPlayers() > 0
+  local function startTurnOrder()
+    if (settings.AdvancedTurnOrder) then
+      -- first player is decided by the turn order draft
+      if not ATO_startDraft() then chooseFirstPlayer() end
+    else
+      chooseFirstPlayer()
+    end
+  end
+
+  -- randomized seats before drafting (or, without a draft, before race selection)
+  local seatTiming = SEAT_timing()
+  if seatTiming == "draft" or (seatTiming == "race" and not settings.AdvancedTurnOrder) then
+    SEAT_randomize(startTurnOrder)
   else
-    chooseFirstPlayer()
+    startTurnOrder()
   end
 
   -- update round marker
@@ -437,8 +455,7 @@ function gameSetup()
   -- remove traitor card for 2 or 3 players
   if (players<4) then getObjectFromGUID(Traitor_GUID).destruct() end
 
-  -- with the advanced turn order, the starting techs are drawn after faction selection
-  if not (settings.AdvancedTurnOrder and ATO.phase ~= "off") then drawStartingTechs() end
+  if not advancedTurnOrder then drawStartingTechs() end
 end
 
 
@@ -738,6 +755,10 @@ function PlayerSetup(parameters)
 
   -- advanced turn order: factions are picked in the drafted race pick order
   -- (in hot seat the pick is made for the player whose turn it is, whoever clicked)
+  -- randomized seats: no faction picks before the seats can be randomized, or while
+  -- players are being moved
+  if not SEAT_canPickRace(PlayerColor) then return false end
+
   local allowed, pickColor = ATO_canPickRace(PlayerColor)
   if not allowed then return false end
   PlayerColor = pickColor
@@ -753,13 +774,35 @@ function PlayerSetup(parameters)
   local pickedColor = PlayerColor
   Wait.time(function() ATO_racePicked(pickedColor) end, 1)
 
+  -- everyone has a faction: as many as the player count, or every seated player
+  local allPicked = settings.setupCompleted
+    and (countSelectedFactions() >= settings.PlayerCount or SEAT_allSeatedPicked())
   -- standard setup: hide the selection area once every player has a faction
   -- (the advanced turn order does this itself when faction selection ends)
-  if not (settings.AdvancedTurnOrder and ATO.phase ~= "off") and settings.setupCompleted
-     and countSelectedFactions() >= settings.PlayerCount then
+  if not (settings.AdvancedTurnOrder and ATO.phase ~= "off") and allPicked then
     Wait.time(hideRaceSelection, 3)
   end
   print(Player[PlayerColor].steam_name, ' selected ', Faction.Name)
+
+  -- seats randomized after race selection: the faction is set up at the player's new
+  -- seat once everyone has picked
+  if SEAT_timing() == "after" and not settings.SeatsRandomized then
+    SEAT_addPending(PlayerColor, Faction)
+    if allPicked and not (settings.AdvancedTurnOrder and ATO.phase ~= "off") then
+      SEAT_randomize(function() SEAT_placePending(nil) end)
+    end
+    return true
+  end
+
+  placeFaction(PlayerColor, Faction)
+  return true
+end
+
+
+-- set up a faction's pieces at a player's seat
+function placeFaction(color, faction)
+  PlayerColor = color
+  Faction = faction
 
   local Box = getObjectFromGUID(Faction.Box_GUID)
   local PlayerPosition = Player[PlayerColor].getHandTransform(int).position
@@ -1725,6 +1768,225 @@ function getInvertFactor(object)
 end
 
 
+-- RANDOMIZE SEAT ORDER --
+-- Optional, enabled with the "Randomize seat order" checkbox in the setup panel.
+-- The seated players are moved to a random permutation of the seats they occupy, by
+-- changing their player colors. When it happens is chosen in the dropdown next to it:
+--  "draft": before the Advanced Turn Order draft (without it: before race selection)
+--  "race":  before race selection (when "Setup" is pressed, or after the draft)
+--  "after": after race selection. Factions are then picked without setting them up;
+--           once everyone has picked, the seats are randomized and each faction is
+--           set up at its player's new seat.
+
+local SEAT_TIMINGS = {
+  ["Before drafting"] = "draft",
+  ["Before race selection"] = "race",
+  ["After race selection"] = "after",
+}
+-- colors without a seat, used to park one player while the others move
+local SEAT_TEMP_COLORS = {"Orange", "Pink", "Teal", "Brown"}
+local SEAT_MOVE_TIMEOUT = 5  -- seconds to wait for one player to change color
+local SEAT_PLACE_INTERVAL = 4  -- seconds between deferred faction setups (they share global state)
+local SEAT_busy = false
+
+-- when the seats are randomized: "draft", "race", "after", or nil when disabled
+function SEAT_timing()
+  if not settings.RandomizeSeats then return nil end
+  local timing = settings.SeatTiming or "after"
+  if timing == "draft" and not settings.AdvancedTurnOrder then timing = "race" end
+  return timing
+end
+
+-- setup panel: the timing dropdown is only usable with the checkbox ticked
+function SetupUI_SeatTiming(player, value, elementId)
+  settings.SeatTiming = SEAT_TIMINGS[value] or "after"
+end
+
+function SEAT_updateSetupUI()
+  UI.setAttribute("RandomizeSeats", "isOn", settings.RandomizeSeats == true)
+  UI.setAttribute("SeatTiming", "interactable", settings.RandomizeSeats and "true" or "false")
+end
+
+-- called by PlayerSetup before anything else
+function SEAT_canPickRace(color)
+  if not settings.RandomizeSeats then return true end
+  if SEAT_busy then
+    broadcastToColor("Wait until the seats have been randomized.", color, {1, 0.4, 0.4})
+    return false
+  end
+  if not settings.setupCompleted then
+    broadcastToColor("Seats are randomized in this game: press Setup before selecting factions.", color, {1, 0.4, 0.4})
+    return false
+  end
+  return true
+end
+
+-- moves that carry out the permutation (old color -> new color) one empty seat at a
+-- time: for each cycle a1 -> a2 -> ... -> ak -> a1, park the player at ak, shift the
+-- others along, then bring the parked player to a1
+function SEAT_planMoves(colors, mapping, temp)
+  local moves, done = {}, {}
+  for _, start in ipairs(colors) do
+    if not done[start] then
+      local cycle = {}
+      local color = start
+      repeat
+        table.insert(cycle, color)
+        done[color] = true
+        color = mapping[color]
+      until color == start
+      local k = #cycle
+      if k > 1 then
+        table.insert(moves, {from = cycle[k], to = temp})
+        for i = k - 1, 1, -1 do table.insert(moves, {from = cycle[i], to = cycle[i + 1]}) end
+        table.insert(moves, {from = temp, to = cycle[1]})
+      end
+    end
+  end
+  return moves
+end
+
+function SEAT_randomize(onDone)
+  settings.SeatsRandomized = true
+  local colors = ATO_seatedPlayers()
+
+  local temp = nil
+  for _, color in ipairs(SEAT_TEMP_COLORS) do
+    if not Player[color].seated then temp = color break end
+  end
+  -- hot seat: every seat is the same Steam account, so moves are checked by which
+  -- seats are taken rather than by who sits in them
+  local hotseat = ATO_isHotseat()
+  local skip = nil
+  if #colors < 2 then skip = "fewer than two seated players"
+  elseif temp == nil then skip = "no free color to move players through" end
+  if skip ~= nil then
+    broadcastToAll("Randomize seat order: skipped (" .. skip .. ").", {1, 0.8, 0.4})
+    onDone()
+    return
+  end
+
+  local steamIds = {}
+  for _, color in ipairs(colors) do steamIds[color] = Player[color].steam_id end
+  local targets = ATO_shuffle(ATO_copy(colors))
+  local mapping = {}
+  for i, color in ipairs(colors) do mapping[color] = targets[i] end
+  local moves = SEAT_planMoves(colors, mapping, temp)
+
+  SEAT_busy = true
+  broadcastToAll("Randomizing the seat order...")
+  local index = 0
+  local step
+  step = function()
+    index = index + 1
+    local move = moves[index]
+    if move == nil then
+      SEAT_finish(colors, steamIds, temp, hotseat and mapping or nil)
+      onDone()
+      return
+    end
+    local mover = Player[move.from]
+    local steamId = mover.steam_id
+    if not mover.seated or steamId == nil then step() return end
+    mover.changeColor(move.to)
+    Wait.condition(step,
+      function()
+        if not Player[move.to].seated then return false end
+        if hotseat then return not Player[move.from].seated end
+        return Player[move.to].steam_id == steamId
+      end,
+      SEAT_MOVE_TIMEOUT,
+      function()
+        broadcastToAll("Randomize seat order: could not move a player to " .. move.to .. ".", {1, 0.4, 0.4})
+        step()
+      end)
+  end
+  step()
+end
+
+-- work out where everyone actually ended up, and update everything kept by color
+-- (hot seat: players can't be told apart by account, so the planned moves are used)
+function SEAT_finish(colors, steamIds, temp, plannedMapping)
+  SEAT_busy = false
+  local mapping = plannedMapping or {}
+  local lines = {}
+  if plannedMapping == nil then
+    for _, old in ipairs(colors) do
+      for _, new in ipairs(colors) do
+        if Player[new].seated and Player[new].steam_id == steamIds[old] then mapping[old] = new end
+      end
+    end
+  end
+  if Player[temp].seated then
+    broadcastToAll(ATO_name(temp) .. " was left at " .. temp .. ": move them to the free seat by hand.", {1, 0.4, 0.4})
+  end
+  SEAT_remap(mapping)
+
+  for _, color in ipairs(colors) do table.insert(lines, color .. ": " .. ATO_name(color)) end
+  broadcastToAll("New seats: " .. table.concat(lines, ", "))
+  ATO_updateUI()
+end
+
+-- state that refers to players by color follows them to their new color
+function SEAT_remap(mapping)
+  local function map(color)
+    if color and mapping[color] then return mapping[color] end
+    return color
+  end
+  local function mapList(list)
+    if list == nil then return end
+    for i = 1, #list do list[i] = map(list[i]) end
+  end
+
+  mapList(ATO.draftOrder)
+  mapList(ATO.raceSlots)
+  mapList(ATO.turnSlots)
+  mapList(ATO.order)
+  mapList(ATO.passOrder)
+  mapList(settings.PassOrder)
+
+  local choice = {}
+  for color, value in pairs(ATO.choice) do choice[map(color)] = value end
+  ATO.choice = choice
+  for guid, color in pairs(ATO.actionCards) do ATO.actionCards[guid] = map(color) end
+
+  local selection = {}
+  for color, faction in pairs(PlayerSelection) do selection[color] = faction end
+  for old, new in pairs(mapping) do selection[new] = PlayerSelection[old] end
+  PlayerSelection = selection
+
+  for _, pending in ipairs(settings.SeatPending or {}) do pending.color = map(pending.color) end
+end
+
+-- true when every seated player has selected a faction
+function SEAT_allSeatedPicked()
+  local seated = ATO_seatedPlayers()
+  if #seated == 0 then return false end
+  for _, color in ipairs(seated) do
+    if PlayerSelection[color] == nil or PlayerSelection[color] == 'none' then return false end
+  end
+  return true
+end
+
+-- seats randomized after race selection: remember the pick until then
+function SEAT_addPending(color, faction)
+  settings.SeatPending = settings.SeatPending or {}
+  table.insert(settings.SeatPending, {color = color, faction = faction})
+  broadcastToColor("Your faction is set up at your new seat once everyone has picked and the seats are randomized.",
+    color, {0.8, 0.9, 1})
+end
+
+-- set up the remembered factions one at a time, then continue
+function SEAT_placePending(onDone)
+  local pending = settings.SeatPending or {}
+  settings.SeatPending = {}
+  for i, entry in ipairs(pending) do
+    Wait.time(function() placeFaction(entry.color, entry.faction) end, 0.5 + (i - 1) * SEAT_PLACE_INTERVAL)
+  end
+  if onDone ~= nil then Wait.time(onDone, 0.5 + #pending * SEAT_PLACE_INTERVAL) end
+end
+
+
 -- STANDARD TURN ORDER --
 -- Without the Advanced Turn Order, passing is tracked too: a player passes by flipping
 -- their "Actions" card face down. The first player to pass gets the start player tile
@@ -2069,6 +2331,16 @@ end
 function ATO_resume()
   if not settings.AdvancedTurnOrder then return end
   if ATO.phase == "reveal" then ATO_beginDraft() end
+  -- saved while the seats were being randomized: finish that step
+  if ATO.phase == "seating" then
+    if ATO.seatingNext == "race" then
+      settings.SeatsRandomized = true
+      ATO_beginRaceSelection()
+    else
+      settings.SeatsRandomized = true
+      SEAT_placePending(ATO_startPlay)
+    end
+  end
   if ATO_isLastDrafter() then Wait.time(ATO_autoLastPick, ATO_REVEAL_STEP_SECONDS) end
 end
 
@@ -2168,6 +2440,18 @@ function ATO_finishDraft()
   broadcastToAll("Race pick order: " .. ATO_numberedList(ATO.raceSlots))
   broadcastToAll("Round 1 turn order: " .. ATO_numberedList(ATO.turnSlots))
 
+  -- randomized seats before race selection: move the players first
+  if SEAT_timing() == "race" and not settings.SeatsRandomized then
+    ATO.phase = "seating"
+    ATO.seatingNext = "race"
+    ATO_updateUI()
+    SEAT_randomize(ATO_beginRaceSelection)
+    return
+  end
+  ATO_beginRaceSelection()
+end
+
+function ATO_beginRaceSelection()
   ATO.phase = "race"
   ATO.raceIndex = 0
   ATO_setTurns(ATO_copy(ATO.raceSlots), nil)
@@ -2201,6 +2485,10 @@ function ATO_canPickRace(color)
     broadcastToColor("Finish the turn order draft before selecting factions.", color, {1, 0.4, 0.4})
     return false, color
   end
+  if ATO.phase == "seating" then
+    broadcastToColor("Wait until the seats have been randomized.", color, {1, 0.4, 0.4})
+    return false, color
+  end
   if ATO.phase == "race" and ATO.raceSlots[ATO.raceIndex] ~= color then
     local expected = ATO.raceSlots[ATO.raceIndex]
     if ATO_isHotseat() then
@@ -2225,6 +2513,16 @@ end
 
 -- Step 4: play round 1 in the drafted turn order
 function ATO_startPlay()
+  -- randomized seats after race selection: move the players, then set up the factions
+  -- at their new seats, then start playing
+  if SEAT_timing() == "after" and not settings.SeatsRandomized then
+    ATO.phase = "seating"
+    ATO.seatingNext = "play"
+    ATO_updateUI()
+    SEAT_randomize(function() SEAT_placePending(ATO_startPlay) end)
+    return
+  end
+
   ATO.phase = "play"
   broadcastToAll("All factions selected: drawing the starting technologies.")
   drawStartingTechs()
@@ -2399,7 +2697,7 @@ function ATO_updateUI()
   local count = math.max(#ATO.draftOrder, #ATO.order)
 
   -- draft / faction selection panel
-  if enabled and (ATO.phase == "reveal" or ATO.phase == "draft" or ATO.phase == "race") then
+  if enabled and (ATO.phase == "reveal" or ATO.phase == "draft" or ATO.phase == "race" or ATO.phase == "seating") then
     local text = ""
     UI.setAttribute("ATO_Panel", "active", "true")
 
@@ -2425,6 +2723,11 @@ function ATO_updateUI()
       -- only the drafter sees the buttons; in hot seat everyone shares one screen
       UI.setAttribute("ATO_Buttons", "visibility", ATO_isHotseat() and "" or (color or ""))
       UI.setAttribute("ATO_Buttons", "active", ATO_isLastDrafter() and "false" or "true")
+    elseif ATO.phase == "seating" then
+      text = "<b>Randomizing seats...</b>\n\n" ..
+        "<b>Race pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count) .. "\n\n" ..
+        "<b>Round 1 turn order</b>\n" .. ATO_slotLines(ATO.turnSlots, count)
+      UI.setAttribute("ATO_Buttons", "active", "false")
     else
       local current = ATO.raceSlots[ATO.raceIndex]
       text = "<b>Faction selection</b> - picking: " .. ATO_name(current) .. "\n\n" ..
@@ -2450,6 +2753,17 @@ function ATO_updateUI()
     UI.setAttribute("ATO_NextPanel", "active", "true")
     UI.setAttribute("ATO_NextPanel", "offsetXY", "-180 0")
     UI.setValue("ATO_NextText", "<b>Next round</b>\n" .. ATO_slotLines(ATO.passOrder, #ATO.order))
+  elseif STO_active() and SEAT_timing() == "after" and not settings.SeatsRandomized then
+    -- seats randomized after race selection: show the picks until then
+    UI.setAttribute("ATO_NextPanel", "active", "true")
+    UI.setAttribute("ATO_NextPanel", "offsetXY", Turns.enable and "-180 0" or "0 0")
+    local lines = {}
+    for _, color in ipairs(ATO_seatedPlayers()) do
+      local faction = PlayerSelection[color]
+      if faction == nil or faction == 'none' then faction = "-" end
+      table.insert(lines, ATO_name(color) .. ": " .. faction)
+    end
+    UI.setValue("ATO_NextText", "<b>Selected races</b>\n" .. table.concat(lines, "\n"))
   elseif STO_active() then
     -- standard turn order: who passed, and who gets the start player tile and direction card
     UI.setAttribute("ATO_NextPanel", "active", "true")

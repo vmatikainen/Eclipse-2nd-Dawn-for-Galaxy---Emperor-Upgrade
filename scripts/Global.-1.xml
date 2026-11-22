@@ -76,7 +76,7 @@
 
 <Panel id="SetupPanel"
 	width="400"
-    height="600"
+    height="640"
 	active = "false"
     rectAlignment="UpperCenter"
     offsetXY="0 -180"
@@ -94,7 +94,7 @@
 	<Button id="closeButton" class="topButtons" rectAlignment="UpperRight" color="#990000" textColor="#FFFFFF" text="X" onClick="closeSetupPanel"></Button>
 
 
-    <Panel offsetXY="0 -35" color="rgb(0.5, 0.5, 0.5)" width="396" height="594" outline="Grey" outlineSize="2 -2">
+    <Panel offsetXY="0 -35" color="rgb(0.5, 0.5, 0.5)" width="396" height="634" outline="Grey" outlineSize="2 -2">
 		<!-- Background image-->
 		<Image image="SetupOptions" preserveAspect="true" rectAlignment="UpperLeft"> </Image>
 
@@ -182,6 +182,23 @@
 					id="AdvancedTurnOrder" onValueChanged="SetupUI_OnChange"
 					tooltip="After Setup, players draft (in random order) either the best race pick position or the best turn order position. Flipping your Actions card during your turn passes and takes the best free turn order position for the next round.">
 				Advanced Turn Order </Toggle>
+				</HorizontalLayout>
+
+				<HorizontalLayout flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="false" spacing="0">
+				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+					id="RandomizeSeats" onValueChanged="SetupUI_OnChange"
+					tooltip="Move the players to random seats by changing their player colors. The dropdown sets when this happens.">
+				Randomize seat order </Toggle>
+
+				<Dropdown id="SeatTiming" minWidth="140" preferredWidth="140" flexibleWidth="0"
+					minHeight="30" preferredHeight="30" flexibleHeight="0" fontSize="12" textColor="#000000" itemTextColor="#000000"
+					interactable="false" onValueChanged="SetupUI_SeatTiming"
+					tooltip="When the seats are randomized. 'Before drafting' needs the Advanced Turn Order; without it, it works like 'Before race selection'."
+					tooltipBackgroundColor="rgba(0,0,0,0.95)">
+					<Option>Before drafting</Option>
+					<Option>Before race selection</Option>
+					<Option selected="true">After race selection</Option>
+				</Dropdown>
 				</HorizontalLayout>
 		</VerticalLayout>
 
