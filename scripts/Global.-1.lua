@@ -258,6 +258,9 @@ end
 function onLoad(saveData)
     RoundMarker = getObjectFromGUID(RoundMarker_GUID)
     TurnDirection = getObjectFromGUID(TurnDirection_GUID)
+    if TurnDirection ~= nil then
+      TurnDirection.addContextMenuItem("Update direction", function() STO_applyDirection() end)
+    end
     TechBag = getObjectFromGUID(TechBag_GUID)
     ReputationBag = getObjectFromGUID(ReputationBag_GUID)
     DiscoveryBag = getObjectFromGUID(DiscoveryBag_GUID)
@@ -359,6 +362,7 @@ function gameSetup()
 
   settings.setupCompleted = true
   updateUI_Visibility()
+  ATO_updateUI()
 
   if not(settings.RiftWeapons) then RemoveRiftExpansion() end
   if (settings.GalacticEvents) then AddGalacticEvents() end
@@ -586,12 +590,11 @@ function nextRound(parameters)
   if (settings.AdvancedTurnOrder and ATO_newRound(round)) then return end
 
   Turns.reverse_order = false
-  if TurnDirection == nil then return 
-  end
-  if (TurnDirection.is_face_down) then
+  if TurnDirection ~= nil and TurnDirection.is_face_down then
     Turns.reverse_order = true
     broadcastToAll("-- Reverse turn order --")
   end
+  STO_newRound()
 end
 
 
@@ -631,8 +634,8 @@ function setInteractivity(isInteractable)
 end
 
 
--- after all factions are selected: remove the selection buttons and move the selection
--- mat and faction display tiles under the table
+-- after all factions are selected: remove the selection buttons, the selection mat and
+-- the faction display tiles (they are not used after faction selection)
 local RaceSelection_GUIDs = {
   'ac4050', -- faction selection mat
   -- faction display tiles (by column: Eridani, Terran Red, Planta, ...)
@@ -643,18 +646,12 @@ local RaceSelection_GUIDs = {
   'f3dc1f'  -- Pyxis Unity
 }
 
+-- (moving them under the table is not enough: that part of the table does not cover them)
 function hideRaceSelection()
-  for _, GUID in ipairs(ButtonGUIDs) do
-    local button = getObjectFromGUID(GUID)
-    if button ~= nil then button.destruct() end
-  end
-  for _, GUID in ipairs(RaceSelection_GUIDs) do
-    local object = getObjectFromGUID(GUID)
-    if object ~= nil then
-      local position = object.getPosition()
-      object.setLock(true)
-      object.setPosition({position.x, -5, position.z})
-      object.interactable = false
+  for _, list in ipairs({ButtonGUIDs, RaceSelection_GUIDs}) do
+    for _, GUID in ipairs(list) do
+      local object = getObjectFromGUID(GUID)
+      if object ~= nil then object.destruct() end
     end
   end
 end
@@ -1476,6 +1473,146 @@ function onObjectDrop(_, obj)
             function() return rest(obj) end,
             2)
     end
+    watchSector(obj)
+    stopSectorWatchUnder(obj)
+end
+
+
+-- Populate explored sectors --------------------------------------------------
+-- When a sector tile is placed and locked, its discovery tile (face down) and
+-- its ancient / guardian ships are put on it automatically.
+-- Sector number -> what the tile shows in its centre (read from the tile art).
+local SectorContents = {
+  -- Sector I
+  ['101'] = {ancients = 1}, ['104'] = {ancients = 2}, ['105'] = {ancients = 1},
+  ['108'] = {ancients = 1}, ['109'] = {ancients = 2}, ['110'] = {},
+  -- Sector II
+  ['203'] = {ancients = 2}, ['204'] = {ancients = 1}, ['211'] = {ancients = 1},
+  ['214'] = {ancients = 1}, ['206'] = {}, ['207'] = {}, ['208'] = {}, ['281'] = {},
+  -- Guardian sectors
+  ['271'] = {guardians = 1}, ['272'] = {guardians = 1},
+  ['273'] = {guardians = 1}, ['274'] = {guardians = 1},
+  -- Sector III
+  ['301'] = {ancients = 2}, ['302'] = {ancients = 1}, ['303'] = {ancients = 1},
+  ['305'] = {ancients = 1}, ['311'] = {}, ['312'] = {}, ['313'] = {}, ['314'] = {},
+  ['315'] = {}, ['316'] = {}, ['381'] = {}, ['382'] = {},
+}
+-- every entry above has a discovery tile; ships go on top of it
+
+local WatchedSectors = {}   -- GUID -> true: dropped, waiting to be locked
+local SectorWatchTimer = nil
+
+function isSectorTile(obj)
+  local name = obj.getName()
+  return name == "Sector 1" or name == "Sector 2" or name == "Sector 3"
+      or name == "Guardian Sector"
+end
+
+function isSectorPopulated(guid)
+  return table.contains(settings.PopulatedSectors or {}, guid)
+end
+
+-- a discovery tile or an ancient / guardian ship dropped on a watched sector means the
+-- players are filling it by hand: stop watching it, and never fill it automatically
+local SECTOR_DROP_RADIUS = 5.5   -- a little less than the hex's inner radius (5.96)
+
+function stopSectorWatchUnder(obj)
+  if next(WatchedSectors) == nil then return end
+  if obj.type == "Infinite" or obj.type == "Bag" then return end
+  if not (obj.getName() == "Discovery" or obj.hasTag("Discovery")
+          or obj.hasTag("Ancient") or obj.hasTag("Guardian")) then return end
+
+  local p = obj.getPosition()
+  for guid in pairs(WatchedSectors) do
+    local sector = getObjectFromGUID(guid)
+    if sector ~= nil then
+      local s = sector.getPosition()
+      local dx, dz = p.x - s.x, p.z - s.z
+      if dx * dx + dz * dz < SECTOR_DROP_RADIUS * SECTOR_DROP_RADIUS then
+        WatchedSectors[guid] = nil
+        settings.PopulatedSectors = settings.PopulatedSectors or {}
+        table.insert(settings.PopulatedSectors, guid)
+      end
+    end
+  end
+end
+
+function watchSector(obj)
+  if not settings.setupCompleted or not isSectorTile(obj) then return end
+  if SectorContents[obj.getDescription()] == nil then return end
+  if isSectorPopulated(obj.getGUID()) then return end
+  WatchedSectors[obj.getGUID()] = true
+  if SectorWatchTimer == nil then
+    SectorWatchTimer = Wait.time(checkWatchedSectors, 0.5, -1)
+  end
+end
+
+function checkWatchedSectors()
+  local remaining = false
+  for guid in pairs(WatchedSectors) do
+    local obj = getObjectFromGUID(guid)
+    if obj == nil or isSectorPopulated(guid) then
+      WatchedSectors[guid] = nil      -- put back in a bag, or already done
+    elseif obj.getLock() and obj.held_by_color == nil and not obj.is_face_down then
+      WatchedSectors[guid] = nil
+      populateSector(obj)
+    else
+      remaining = true
+    end
+  end
+  if not remaining then
+    Wait.stop(SectorWatchTimer)
+    SectorWatchTimer = nil
+  end
+end
+
+-- the infinite bag of ancient / guardian ships that setup left on the table
+function findShipSource(tag)
+  for _, o in ipairs(getObjectsWithTag(tag)) do
+    if o.type == "Infinite" then return o end
+  end
+  return nil
+end
+
+function populateSector(sector)
+  local contents = SectorContents[sector.getDescription()]
+  settings.PopulatedSectors = settings.PopulatedSectors or {}
+  table.insert(settings.PopulatedSectors, sector.getGUID())
+
+  local center = sector.getPosition()
+  local yaw = sector.getRotation().y
+
+  if DiscoveryBag ~= nil and DiscoveryBag.getQuantity() > 0 then
+    DiscoveryBag.takeObject({
+      position = center + Vector(0, 0.5, 0),
+      rotation = {180, yaw, 0},
+      smooth = false })
+  else
+    broadcastToAll("No discovery tiles left for sector " .. sector.getDescription(), {1, 0.5, 0})
+  end
+
+  local ships = contents.ancients or contents.guardians or 0
+  if ships == 0 then return end
+  local tag = contents.ancients and "Ancient" or "Guardian"
+  local source = findShipSource(tag)
+  if source == nil then
+    broadcastToAll("Could not find the " .. tag .. " ships to place on sector " .. sector.getDescription(), {1, 0.5, 0})
+    return
+  end
+  -- two ships are stacked, the top one shifted slightly so both stay visible
+  -- (about 80% overlap), in the sector's own orientation
+  local offsets = (ships == 1) and {0} or {-0.15, 0.15}
+  local r = math.rad(yaw)
+  for i, dx in ipairs(offsets) do
+    local offset = Vector(dx * math.cos(r), 0, -dx * math.sin(r))
+    -- wait a moment so each ship lands on top of the discovery tile
+    Wait.time(function()
+      source.takeObject({
+        position = center + offset + Vector(0, 1 + 0.5 * i, 0),
+        rotation = {0, yaw, 0},
+        smooth = false })
+    end, 0.3 * i)
+  end
 end
 
 --
@@ -1557,6 +1694,147 @@ end
 function getInvertFactor(object)
     if object.getPosition().z > 0 then return -1
     else return 1 end
+end
+
+
+-- STANDARD TURN ORDER --
+-- Without the Advanced Turn Order, passing is tracked too: a player passes by flipping
+-- their "Actions" card face down. The first player to pass gets the start player tile
+-- and starts the next round, the second gets the "Direction of Play" card and chooses
+-- the direction by flipping it. A small "Passed" list at the top right shows the order.
+
+function STO_active()
+  return settings.setupCompleted and not settings.AdvancedTurnOrder
+end
+
+function STO_pass(color, card, flipper)
+  settings.PassOrder = settings.PassOrder or {}
+  if table.contains(settings.PassOrder, color) then return end
+
+  -- when the built-in turns are used, passing is only allowed during your own turn
+  local current = Turns.turn_color
+  if Turns.enable and current ~= nil and current ~= "" and current ~= color then
+    broadcastToColor("You can only pass during your own turn. It is " .. ATO_name(current) .. "'s turn.",
+      flipper or color, {1, 0.4, 0.4})
+    Wait.time(function()
+      if card ~= nil and card.is_face_down and not table.contains(settings.PassOrder, color) then card.flip() end
+    end, 1)
+    return
+  end
+
+  table.insert(settings.PassOrder, color)
+  local position = #settings.PassOrder
+  if position == 1 then
+    broadcastToAll(ATO_name(color) .. " passes first and takes the start player tile for the next round.", color)
+    placeFirstPlayerTile(color)
+  elseif position == 2 then
+    broadcastToAll(ATO_name(color) .. " passes second and takes the Direction of Play card: flip it to choose the next round's direction.", color)
+    STO_giveDirectionCard(color)
+  else
+    broadcastToAll(string.format("%s passes (#%d).", ATO_name(color), position), color)
+  end
+
+  if position >= #ATO_seatedPlayers() then
+    broadcastToAll("All players have passed. Finish the round and press 'Next Round'.")
+  end
+
+  -- passing ends the turn
+  if Turns.enable and Turns.turn_color == color then
+    local nextColor = Turns.getNextTurnColor()
+    if nextColor ~= nil and nextColor ~= "" and nextColor ~= color then Turns.turn_color = nextColor end
+  end
+  ATO_updateUI()
+end
+
+-- move the Direction of Play card in front of the given player, next to where the
+-- start player tile goes, keeping the side it shows
+function STO_giveDirectionCard(color)
+  if TurnDirection == nil or Player[color] == nil then return end
+  local hand = Player[color].getHandTransform()
+  if hand == nil then return end
+  local position = hand.position
+  local inv = (position.z < 0) and 1 or -1
+  local rotation = TurnDirection.getRotation()
+  TurnDirection.setPositionSmooth(Vector(position.x - 4 * inv, 1.2, position.z + 28 * inv), false, false)
+  TurnDirection.setRotationSmooth({rotation.x, (inv + 1) * 90, rotation.z}, false, false)
+end
+
+-- Direction of Play card, right click: apply the side it shows now to the current round
+-- TTS's automatic turn order follows this color sequence
+local STO_COLOR_ORDER = {"White", "Brown", "Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "Pink"}
+
+-- the round's turn order in the normal direction
+function STO_normalOrder()
+  if Turns.type == 2 and Turns.order ~= nil and #Turns.order > 0 then return ATO_copy(Turns.order) end
+  local seated = ATO_seatedPlayers()
+  local order = {}
+  for _, color in ipairs(STO_COLOR_ORDER) do
+    if table.contains(seated, color) then table.insert(order, color) end
+  end
+  return order
+end
+
+function STO_reversed(list)
+  local result = {}
+  for i = #list, 1, -1 do table.insert(result, list[i]) end
+  return result
+end
+
+-- give the turn to a color, and again once TTS has settled after an order change
+-- (TTS picks its own turn a few frames after the order changes)
+function STO_setTurn(color)
+  if color == nil or color == "" then return end
+  Turns.turn_color = color
+  Wait.frames(function()
+    if Turns.turn_color ~= color then Turns.turn_color = color end
+  end, 10)
+end
+
+function STO_applyDirection()
+  if TurnDirection == nil then return end
+  local reverse = TurnDirection.is_face_down
+  local current = Turns.turn_color
+
+  if not Turns.enable or current == nil or current == "" then
+    Turns.reverse_order = reverse
+  else
+    -- Changing Turns.reverse_order mid-turn leaves TTS's "next player" pointer at the
+    -- old position, so the turn jumps to the wrong player. Instead, set an explicit order
+    -- in the chosen direction and give the turn back to the current player.
+    -- The original turn settings are restored at the next round.
+    if settings.STO_Order == nil then
+      settings.STO_Order = STO_normalOrder()
+      settings.STO_TurnType = Turns.type
+    end
+    local order = ATO_copy(settings.STO_Order)
+    if reverse then order = STO_reversed(order) end
+    Turns.type = 2
+    Turns.order = order
+    Turns.reverse_order = false
+    STO_setTurn(current)
+  end
+
+  if reverse then
+    broadcastToAll("-- Direction of play: reverse --")
+  else
+    broadcastToAll("-- Direction of play: normal --")
+  end
+end
+
+-- called by nextRound: the first player to pass starts the new round
+function STO_newRound()
+  -- undo the explicit order set by "Update direction" during the round
+  if settings.STO_Order ~= nil then
+    Turns.type = settings.STO_TurnType or 0
+    if Turns.type == 2 then Turns.order = settings.STO_Order end
+    settings.STO_Order = nil
+    settings.STO_TurnType = nil
+  end
+
+  local first = (settings.PassOrder or {})[1]
+  settings.PassOrder = {}
+  if Turns.enable then STO_setTurn(first or Turns.turn_color) end
+  ATO_updateUI()
 end
 
 
@@ -2000,7 +2278,8 @@ function ATO_pass(color, card, flipper)
 end
 
 function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
-  if not (settings.AdvancedTurnOrder and ATO.phase == "play") then return end
+  local advanced = settings.AdvancedTurnOrder and ATO.phase == "play"
+  if not (advanced or STO_active()) then return end
   if object == nil or object.getName() ~= "Actions" then return end
   if type(flip) ~= "number" or flip == old_flip then return end
 
@@ -2008,7 +2287,8 @@ function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
   if angle < 90 or angle > 270 then return end  -- flipped face up, not a pass
 
   local owner = ATO.actionCards[object.getGUID()] or player_color
-  ATO_pass(owner, object, player_color)
+  if owner == nil then return end
+  if advanced then ATO_pass(owner, object, player_color) else STO_pass(owner, object, player_color) end
 end
 
 function onPlayerTurn(player, previous_player)
@@ -2140,7 +2420,20 @@ function ATO_updateUI()
   -- this small list at the top of the screen shows the order for the next round
   if enabled and ATO.phase == "play" then
     UI.setAttribute("ATO_NextPanel", "active", "true")
+    UI.setAttribute("ATO_NextPanel", "offsetXY", "-180 0")
     UI.setValue("ATO_NextText", "<b>Next round</b>\n" .. ATO_slotLines(ATO.passOrder, #ATO.order))
+  elseif STO_active() then
+    -- standard turn order: who passed, and who gets the start player tile and direction card
+    UI.setAttribute("ATO_NextPanel", "active", "true")
+    -- sit left of the built-in turn indicator when it is shown, else in the corner
+    UI.setAttribute("ATO_NextPanel", "offsetXY", Turns.enable and "-180 0" or "0 0")
+    local passOrder = settings.PassOrder or {}
+    local count = math.max(#passOrder, #ATO_seatedPlayers())
+    UI.setValue("ATO_NextText", "<b>Passed</b>\n" .. ATO_slotLines(passOrder, count, function(color)
+      if color == passOrder[1] then return " (start)" end
+      if color == passOrder[2] then return " (direction)" end
+      return ""
+    end))
   else
     UI.setAttribute("ATO_NextPanel", "active", "false")
   end
