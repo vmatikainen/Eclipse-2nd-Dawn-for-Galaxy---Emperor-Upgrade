@@ -8,3 +8,7 @@
 !tools/
 !tools/*.py
 !README.md
+!CLAUDE.md
+!board-maps/
+!board-maps/*.svg
+!board-maps/index.html

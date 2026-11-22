@@ -11,6 +11,8 @@ It adds an optional **Advanced Turn Order** house rule (see below).
 | `2348417296.json` | The mod file Tabletop Simulator loads. It contains every object on the table, with all scripts embedded as one-line strings. |
 | `scripts/` | The scripts from the mod file as readable files. **Edit these.** |
 | `tools/tts_scripts.py` | Copies scripts between `scripts/` and the mod file. |
+| `tools/normalize_board_snaps.py` | Gives every player board's snap points the same numbering (see CLAUDE.md). `--check` reports boards that don't follow it. |
+| `tools/annotate_boards.py` | Draws each player board's snap points, numbered, into `board-maps/index.html`. |
 
 Script files are named the way the VS Code Tabletop Simulator extension names them:
 

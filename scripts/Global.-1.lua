@@ -248,8 +248,10 @@ end
 -- Called when the game is saved, save global settings
 function onSave()
   settings.ATOState = ATO
+  settings.PlayerState = PlayerState
   local data = JSON.encode(settings)
   settings.ATOState = nil
+  settings.PlayerState = nil
   return data
 end
 
@@ -268,11 +270,14 @@ function onLoad(saveData)
     MinorSpeciesBag = getObjectFromGUID(MinorSpeciesBag_GUID)
     TableZone = getObjectFromGUID(TableZone_GUID)
 
+    local saved = nil
+    if saveData and saveData ~= "" then saved = JSON.decode(saveData) end
+
     local round = tonumber(RoundMarker.getDescription())
     if (round>0) then
       -- Load the save data, if present
-      if saveData and saveData ~= "" then
-        settings = JSON.decode(saveData)
+      if saved then
+        settings = saved
         ATO_restore(settings.ATOState)
         settings.ATOState = nil
         printToAll("Save state initialized")
@@ -280,6 +285,10 @@ function onLoad(saveData)
         printSettings()
       end
     end
+
+    -- factions can be selected before Setup too, so restore them whatever the round
+    PlayerState_restore(saved and saved.PlayerState)
+    settings.PlayerState = nil
 
     updateGameStateBasedOnSettings()
     shuffleEverything()
@@ -726,8 +735,10 @@ function PlayerSetup(parameters)
   end
 
   -- take player board, position it, add influence discs
+  local boardGUID = nil
   Object = SeekAndTake('Player Board', Box, takeParams)
   if (Object~=false) then
+    boardGUID = Object.getGUID()
     destination = PlayerPosition + Vector(0, 0, 19*InvPos)
     Object.setPositionSmooth(destination, false, true)
     -- place influenbce discs, once the board is in place
@@ -788,6 +799,7 @@ function PlayerSetup(parameters)
     end
   end
 
+  PlayerState_record(PlayerColor, Faction.Name, boardGUID)
   ATO_racePicked(PlayerColor)
   return true
 end
@@ -1899,3 +1911,50 @@ function ATO_updateUI()
 end
 
 ATO = ATO_defaultState()
+
+
+--------------------------------------------------------------------------------
+-- Player state: which faction each player color selected, and that player's
+-- board. Saved with the game. Groundwork for ship state and the combat zone.
+--
+--   PlayerState[color] = { faction = "Orion Hegemony", boardGUID = "f3fd3a" }
+--
+-- Only colors that selected a faction have an entry. PlayerSelection (from the
+-- original mod) is not saved by itself; it is filled in again from this on load.
+--------------------------------------------------------------------------------
+
+PlayerState = {}
+
+-- called by PlayerSetup once a faction has been set up for a color
+function PlayerState_record(color, faction, boardGUID)
+  PlayerState[color] = { faction = faction, boardGUID = boardGUID }
+end
+
+-- restore from a save; also restores PlayerSelection
+function PlayerState_restore(state)
+  PlayerState = {}
+  if type(state) ~= "table" then return end
+  for color, entry in pairs(state) do
+    if type(entry) == "table" and entry.faction ~= nil then
+      PlayerState[color] = { faction = entry.faction, boardGUID = entry.boardGUID }
+      PlayerSelection[color] = entry.faction
+      if PlayerState_board(color) == nil then
+        printToAll(string.format("Player state: the player board of %s (%s) was not found.",
+                                 color, entry.faction), {1, 0.4, 0.4})
+      end
+    end
+  end
+end
+
+-- faction name selected by a color, or nil
+function PlayerState_faction(color)
+  local entry = PlayerState[color]
+  return entry and entry.faction
+end
+
+-- player board object of a color, or nil
+function PlayerState_board(color)
+  local entry = PlayerState[color]
+  if entry == nil or entry.boardGUID == nil then return nil end
+  return getObjectFromGUID(entry.boardGUID)
+end
