@@ -4,6 +4,8 @@
 !scripts/
 !scripts/*.lua
 !scripts/*.xml
+!scripts/include/
+!scripts/include/*.ttslua
 !tools/
 !tools/*.py
 !README.md
@@ -11,6 +13,8 @@
 !board-maps/
 !board-maps/*.svg
 !board-maps/index.html
+!reference/
+!reference/*.svg
 !.claude/
 !.claude/skills/
 !.claude/skills/**

@@ -13,6 +13,8 @@ It adds an optional **Advanced Turn Order** house rule (see below).
 | `tools/tts_scripts.py` | Copies scripts between `scripts/` and a mod file. |
 | `tools/apply_object_fixes.py` | Applies our changes to objects in the mod file (e.g. sector tiles aligned in their bags). |
 | `tools/normalize_board_snaps.py` | Gives every player board's snap points the same numbering (see CLAUDE.md). `--check` reports boards that don't follow it. |
+| `scripts/include/` | Script files pulled into other scripts with `#include Name` (same format as the VS Code TTS extension). |
+| `tools/reference_sheets.py` | Draws `reference/ship-parts.svg` and `reference/ancient-tech.svg`: every ship part and ancient ship part, with the stats our data records. |
 | `tools/annotate_boards.py` | Draws each player board's snap points, numbered, into `board-maps/index.html`. |
 | `.claude/skills/` | Project skills for Claude Code, e.g. `pull-main`. |
 
