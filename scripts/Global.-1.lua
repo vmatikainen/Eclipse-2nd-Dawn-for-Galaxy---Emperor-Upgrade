@@ -1474,6 +1474,7 @@ function onObjectDrop(_, obj)
             2)
     end
     watchSector(obj)
+    stopSectorWatchUnder(obj)
 end
 
 
@@ -1509,6 +1510,31 @@ end
 
 function isSectorPopulated(guid)
   return table.contains(settings.PopulatedSectors or {}, guid)
+end
+
+-- a discovery tile or an ancient / guardian ship dropped on a watched sector means the
+-- players are filling it by hand: stop watching it, and never fill it automatically
+local SECTOR_DROP_RADIUS = 5.5   -- a little less than the hex's inner radius (5.96)
+
+function stopSectorWatchUnder(obj)
+  if next(WatchedSectors) == nil then return end
+  if obj.type == "Infinite" or obj.type == "Bag" then return end
+  if not (obj.getName() == "Discovery" or obj.hasTag("Discovery")
+          or obj.hasTag("Ancient") or obj.hasTag("Guardian")) then return end
+
+  local p = obj.getPosition()
+  for guid in pairs(WatchedSectors) do
+    local sector = getObjectFromGUID(guid)
+    if sector ~= nil then
+      local s = sector.getPosition()
+      local dx, dz = p.x - s.x, p.z - s.z
+      if dx * dx + dz * dz < SECTOR_DROP_RADIUS * SECTOR_DROP_RADIUS then
+        WatchedSectors[guid] = nil
+        settings.PopulatedSectors = settings.PopulatedSectors or {}
+        table.insert(settings.PopulatedSectors, guid)
+      end
+    end
+  end
 end
 
 function watchSector(obj)
