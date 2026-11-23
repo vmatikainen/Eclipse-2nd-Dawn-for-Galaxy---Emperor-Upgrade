@@ -17,6 +17,7 @@
 !reference/*.svg
 !assets/
 !assets/*.jpg
+!assets/*.png
 !.claude/
 !.claude/skills/
 !.claude/skills/**

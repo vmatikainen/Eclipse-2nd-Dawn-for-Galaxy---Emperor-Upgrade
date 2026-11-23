@@ -5,6 +5,8 @@ Everything we change in it is reproducible from the repository:
   1. scripts/ are written into it                               (tools/tts_scripts.py build)
   2. our object changes are applied                             (tools/apply_object_fixes.py)
   3. player board snap points are put into the canonical order  (tools/normalize_board_snaps.py)
+  4. the mod's thumbnail (<mod>.png next to the JSON, shown in TTS and used as the Workshop
+     preview when uploading) is assets/workshop_cover_square.png: only for our mod file
 
 Usage (run from the repository root):
     python tools/rebuild_mod.py                       rebuild ./3844682665.json
@@ -16,11 +18,13 @@ including the plain Steam Workshop download of the original mod (item 2348417296
 """
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_MOD = os.path.join(ROOT, '3844682665.json')
+THUMBNAIL = os.path.join(ROOT, 'assets', 'workshop_cover_square.png')
 WORKSHOP_HINT = """No mod file at {path}.
 Copy the Workshop download of the original mod there first (as 3844682665.json), from
   macOS:   ~/Library/Tabletop Simulator/Mods/Workshop/2348417296.json
@@ -50,6 +54,10 @@ def main():
     run(os.path.join('tools', 'apply_object_fixes.py'), '--mod', mod)
     print('== player board snap points')
     run(os.path.join('tools', 'normalize_board_snaps.py'), '--mod', mod)
+    # a save keeps its own thumbnail
+    if os.path.basename(mod) == os.path.basename(DEFAULT_MOD) and os.path.isfile(THUMBNAIL):
+        print('== thumbnail')
+        shutil.copyfile(THUMBNAIL, os.path.splitext(mod)[0] + '.png')
     print(f'\nRebuilt {mod}. Load it again in Tabletop Simulator to see the changes.')
 
 
