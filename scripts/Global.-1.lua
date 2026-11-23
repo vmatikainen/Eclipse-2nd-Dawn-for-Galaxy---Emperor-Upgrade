@@ -375,6 +375,12 @@ function onLoad(saveData)
 
     ATO_updateUI()
     ATO_resume()
+    -- hot seat players at a color without a player area move to a free one
+    HotseatColors_restore()
+end
+
+function onPlayerChangeColor(player_color)
+  HotseatColors_onChangeColor(player_color)
 end
 
 
@@ -3137,3 +3143,9 @@ end
 -- Closing the setup popup: it flies to the Setup Options button (scripts/include/SetupClose.ttslua)
 --------------------------------------------------------------------------------
 #include SetupClose
+
+
+--------------------------------------------------------------------------------
+-- Hot seat players at a color without a player area move to a free one (scripts/include/HotseatColors.ttslua)
+--------------------------------------------------------------------------------
+#include HotseatColors

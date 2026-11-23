@@ -1,0 +1,66 @@
+--------------------------------------------------------------------------------
+-- Hot seat colors: players at a color without a player area are moved to a free one
+--------------------------------------------------------------------------------
+-- The table has player areas for White, Red, Blue, Purple, Green and Yellow only. A
+-- player at Orange, Pink, Teal or Brown breaks faction setup and the turn order. TTS's
+-- hot seat mode asks for the seat colors before the mod is loaded, so it's easy to end
+-- up there. In hot seat (every seat is the same Steam account, ATO_isHotseat), such a
+-- player is moved to the first free allowed color, clockwise from Yellow: on load, and
+-- whenever someone changes color. Black (the game master) and spectators are left alone.
+--
+-- Randomize seat order parks players at these colors on purpose while it moves them, so
+-- nothing is moved while it runs (SEAT_isBusy).
+
+local HotseatColors_ALLOWED = {"Yellow", "Red", "Green", "Blue", "Purple", "White"}
+local HotseatColors_WRONG = {"Orange", "Pink", "Teal", "Brown"}
+local HotseatColors_SETTLE_FRAMES = 10  -- frames to wait after a move before checking again
+
+HotseatColors_busy = false  -- a move is waiting to settle
+
+local function HotseatColors_isWrong(color)
+  for _, wrong in ipairs(HotseatColors_WRONG) do
+    if color == wrong then return true end
+  end
+  return false
+end
+
+local function HotseatColors_freeColor()
+  for _, color in ipairs(HotseatColors_ALLOWED) do
+    if not Player[color].seated then return color end
+  end
+  return nil
+end
+
+-- moves one player at a time, checking again once the move has settled
+function HotseatColors_check()
+  if HotseatColors_busy or SEAT_isBusy() or not ATO_isHotseat() then return end
+  for _, player in ipairs(Player.getPlayers()) do
+    if HotseatColors_isWrong(player.color) then
+      local free = HotseatColors_freeColor()
+      if free == nil then
+        broadcastToAll("Hot seat: " .. player.color .. " has no player area, and every seat color is taken.",
+          {1, 0.4, 0.4})
+        return
+      end
+      broadcastToAll("Hot seat: " .. player.color .. " has no player area, so that seat moved to " .. free .. ".",
+        {1, 0.8, 0.4})
+      HotseatColors_busy = true
+      player.changeColor(free)
+      Wait.frames(function()
+        HotseatColors_busy = false
+        HotseatColors_check()
+      end, HotseatColors_SETTLE_FRAMES)
+      return
+    end
+  end
+end
+
+-- called by onLoad: hot seat players are seated before the scripts run
+function HotseatColors_restore()
+  Wait.time(HotseatColors_check, 1)
+end
+
+-- called by onPlayerChangeColor
+function HotseatColors_onChangeColor(color)
+  if HotseatColors_isWrong(color) then HotseatColors_check() end
+end

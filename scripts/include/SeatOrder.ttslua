@@ -29,6 +29,11 @@ function SEAT_timing()
   return timing
 end
 
+-- players are being moved (some wait at a color without a seat meanwhile)
+function SEAT_isBusy()
+  return SEAT_busy
+end
+
 -- setup panel: the timing dropdown is only usable with the checkbox ticked
 function SEAT_setTiming(player, value, elementId)
   settings.SeatTiming = SEAT_TIMINGS[value] or "after"

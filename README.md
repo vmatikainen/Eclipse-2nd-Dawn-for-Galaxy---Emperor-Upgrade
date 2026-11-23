@@ -263,4 +263,6 @@ and Brown aren't known to the mod. A player at one of those colors breaks factio
 (for example with *"You already selected nil"*) and the turn order draft.
 
 **Hot seat:** the screen moves to whoever is due to choose, pick a faction or play. When you set up hot seat, give each player one of the
-six colors above.
+six colors above. A hot seat player at Orange, Pink, Teal or Brown is moved to the first
+free one of them (clockwise from Yellow) when the game loads or when they take that seat,
+with a message saying so.

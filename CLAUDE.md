@@ -173,6 +173,8 @@ https://api.tabletopsimulator.com/
 - `include/SetupClose.ttslua`: closing the setup popup with X (`closeSetupPanel`) shows a
   copy of it (`SetupClose_Ghost` in the XML) shrinking into the *Setup Options* button, for
   the player who closed it only. The path assumes Global UI's 1920 wide screen.
+- `include/HotseatColors.ttslua`: in hot seat, players at a color without a player area are
+  moved to a free seat color (`HotseatColors_*`).
 - `include/RaceButtons.ttslua`: hides the race buttons from everyone except the player
   picking a race (`RaceButtons_update`, with `setInvisibleTo`). Called when the race pick
   changes, when race selection ends, and from `updateGameStateBasedOnSettings` (which
@@ -229,7 +231,9 @@ the GUID of the object you actually took out rather than hard-coding the one in 
   hand position (`Player[color].getHandTransform()`).
 - **Hot seat:** only the six seat colors work. Seating someone at Orange (no hand zone) or at
   Pink, Teal or Brown (not in `PlayerSelection`) breaks faction setup. The README documents
-  this for players. Hot seat picks are made for whoever's turn
+  this for players. In hot seat, `include/HotseatColors.ttslua` moves a player at Orange, Pink,
+  Teal or Brown to the first free seat color (on load and in `onPlayerChangeColor`), except
+  while Randomize seat order is moving players (`SEAT_isBusy`). Hot seat picks are made for whoever's turn
   it is (`ATO_canPickRace` returns the color to use).
 - **Known issue, no fix yet: hot seat picks player colors before the game file loads.**
   TTS's hot seat mode makes you pick the seat colors before the mod is loaded. So the
