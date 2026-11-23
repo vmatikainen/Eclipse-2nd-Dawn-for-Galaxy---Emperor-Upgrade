@@ -39,7 +39,7 @@ RANDOM_ORDER = 2
 MOD_NAME = 'Eclipse: Second Dawn for the Galaxy - Emperor Edition'
 SETUP_ASSET = 'SetupOptions'
 # assets/emperor_background.jpg uploaded to Steam Cloud
-SETUP_BACKGROUND_URL = 'https://steamusercontent-a.akamaihd.net/ugc/17730115518711650371/396A6357EFB949BD4B7E235C5EF67F18C167491B/'
+SETUP_BACKGROUND_URL = 'https://steamusercontent-a.akamaihd.net/ugc/12261681211286334942/BFC258A117E13CF40E041A5AC7A232D240491B35/'
 SETUP_BACKGROUND_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                      'assets', 'emperor_background.jpg')
 
