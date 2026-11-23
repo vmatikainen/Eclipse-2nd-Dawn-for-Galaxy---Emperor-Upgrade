@@ -154,6 +154,9 @@ https://api.tabletopsimulator.com/
   (`CombatSim_Panel` in the XML): Monte Carlo battles of the board owner's ships
   (`ShipState_stats`, side `"you"`) against the NPC variants on the table
   (`ShipState_npcOf`) or another player's ships (side `"opp"`, attacking or defending).
+  It's the house rule "Combat calculator" (`settings.CombatSim`, on by default, read with
+  `CombatSim_enabled()`): off, no buttons are added, and switching it removes or adds them
+  (`CombatSim_applySetting`).
   The opponent "dropdown" is a button plus a list of option buttons (`CombatSim_List`),
   because TTS can't change a Dropdown's options from a script: "Ancients" and every other
   player with a faction, by name and faction. With Ancients the NPC buttons show; with a

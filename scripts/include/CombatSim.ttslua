@@ -85,8 +85,14 @@ CombatSim_counts = { you = CombatSim_noShips(), opp = CombatSim_noShips() }
 --------------------------------------------------------------------------------
 -- the button on the player boards
 
+-- the house rule "Combat calculator" (settings.CombatSim), on by default: saves from
+-- before the setting don't have it, and get the button
+function CombatSim_enabled()
+  return settings.CombatSim ~= false
+end
+
 function CombatSim_addButton(board)
-  if board == nil then return end
+  if board == nil or not CombatSim_enabled() then return end
   for _, button in ipairs(board.getButtons() or {}) do
     if button.click_function == "CombatSim_open" then return end
   end
@@ -107,6 +113,24 @@ end
 -- called by onLoad: buttons made by scripts aren't saved
 function CombatSim_restore()
   for color, _ in pairs(PlayerState) do CombatSim_addButton(PlayerState_board(color)) end
+end
+
+-- the house rule was switched (factions can be set up before Setup): add or remove the
+-- buttons on the boards already handed out, and close the panel when it's off
+function CombatSim_applySetting()
+  if CombatSim_enabled() then
+    CombatSim_restore()
+    return
+  end
+  for color, _ in pairs(PlayerState) do
+    local board = PlayerState_board(color)
+    if board ~= nil then
+      for _, button in ipairs(board.getButtons() or {}) do
+        if button.click_function == "CombatSim_open" then board.removeButton(button.index) end
+      end
+    end
+  end
+  UI.setAttribute("CombatSim_Panel", "active", "false")
 end
 
 function CombatSim_ownerOf(board)

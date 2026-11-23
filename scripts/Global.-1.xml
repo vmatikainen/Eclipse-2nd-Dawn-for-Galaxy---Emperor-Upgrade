@@ -367,6 +367,13 @@
 					tooltip="Draw the starting technologies once every player has selected a faction, instead of when Setup is pressed. Works with every turn order and starting player.">
 				Tech setup after faction selection </Toggle>
 				</HorizontalLayout>
+
+				<HorizontalLayout flexibleHeight="0">
+				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+					id="CombatSim" onValueChanged="SetupUI_OnChange" isOn="true"
+					tooltip="A Combat Sim button on every player board: simulates battles of your ships against the NPCs or another player, and shows the odds of winning.">
+				Combat calculator </Toggle>
+				</HorizontalLayout>
 		</VerticalLayout>
 
 

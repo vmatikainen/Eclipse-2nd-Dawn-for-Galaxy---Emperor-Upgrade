@@ -108,6 +108,7 @@ settings = {
 
   NoRoundLimit = false,
   TechAfterRaces = false,     -- draw the starting techs after race selection, not at Setup
+  CombatSim = true,           -- the Combat Sim button on the player boards (nil in older saves: on)
 
   TurnOrder = "rotating",     -- "rotating" or "pass" (see TURN ORDER)
   StartingPlayer = "yellow",  -- "yellow", "random" or "draft" (draft: pass order only)
@@ -126,6 +127,7 @@ function printSettings()
   printToAll(string.format(" - Galactic Events: %s", tostring(settings.GalacticEvents)))
   printToAll(string.format(" - Round Limit: %s", tostring(not settings.NoRoundLimit)))
   printToAll(string.format(" - Tech setup after faction selection: %s", tostring(settings.TechAfterRaces == true)))
+  printToAll(string.format(" - Combat calculator: %s", tostring(CombatSim_enabled())))
   printToAll(string.format(" - Turn order: %s", ATO_passOrder() and "pass order" or "rotating"))
   printToAll(string.format(" - Starting player: %s", ATO_startMode()))
   printToAll(string.format(" - Random factions: %s", tostring(settings.RandomRaces == true)))
@@ -214,6 +216,7 @@ function SetupUI_OnChange(player, checked, elementId)
     end
   end
   SEAT_updateSetupUI()
+  if elementId == "CombatSim" then CombatSim_applySetting() end
 
   updateGameStateBasedOnSettings()
 end
@@ -252,6 +255,7 @@ function updateSetupUI()
   if (settings.NoRoundLimit) then UI.setAttribute("NoRoundLimit", "isOn", true)
   else UI.setAttribute("NoRoundLimit", "isOn", false) end
   UI.setAttribute("TechAfterRaces", "isOn", settings.TechAfterRaces == true)
+  UI.setAttribute("CombatSim", "isOn", CombatSim_enabled())
 
   for i = 2, 6 do UI.setAttribute(i .. 'Players', 'isOn', settings.PlayerCount == i) end
   SEAT_updateSetupUI()
@@ -312,6 +316,7 @@ function onLoad(saveData)
       if saved then
         settings = saved
         ATO_migrateSettings()
+        if settings.CombatSim == nil then settings.CombatSim = true end  -- saves from before the house rule
         ATO_restore(settings.ATOState)
         settings.ATOState = nil
         printToAll("Save state initialized")
