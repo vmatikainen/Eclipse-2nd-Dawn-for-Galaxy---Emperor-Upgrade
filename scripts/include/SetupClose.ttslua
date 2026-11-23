@@ -1,0 +1,63 @@
+--------------------------------------------------------------------------------
+-- Closing the setup popup with its X: a copy of the popup (SetupClose_Ghost in the XML)
+-- shrinks and flies to the "Setup Options" button at the top left, so the player sees
+-- where it went. Only the player who closed it sees the animation.
+--
+-- Both are in Global UI coordinates, which are a 1920 x 1080 screen: the popup is
+-- aligned to the top centre, the button to the top left. On a screen with another
+-- aspect ratio the end point can be a little off, which the fade hides.
+--------------------------------------------------------------------------------
+
+local SetupClose_FRAMES = 20  -- length of the animation
+local SetupClose_SCREEN_WIDTH = 1920
+-- the popup (SetupPanel: top centre, offset 0 -160, 400 x 872)
+local SetupClose_FROM = { x = 0, y = -160, w = 400, h = 872 }
+-- the button (Button_ShowSetup: top left, offset 250 0, 125 x 50), from the top centre
+local SetupClose_TO = { x = 250 + 125 / 2 - SetupClose_SCREEN_WIDTH / 2, y = 0, w = 125, h = 50 }
+
+SetupClose_colors = {}  -- the players watching the animation
+SetupClose_run = 0      -- the newest animation; an older one stops
+
+local function SetupClose_lerp(a, b, t) return a + (b - a) * t end
+
+-- called by closeSetupPanel, before the popup is hidden for the player
+function SetupClose_animate(color)
+  if color == nil then return end
+  SetupClose_colors[color] = true
+  SetupClose_run = SetupClose_run + 1
+  local run = SetupClose_run
+
+  local colors = {}
+  for c in pairs(SetupClose_colors) do table.insert(colors, c) end
+  UI.setAttribute("SetupClose_Ghost", "visibility", table.concat(colors, "|"))
+  -- the popup disappears at once for this player: the copy is what moves
+  UI.setAttribute("SetupPanel", "hideAnimation", "None")
+
+  local frame = 0
+  local step
+  step = function()
+    if run ~= SetupClose_run then return end
+    frame = frame + 1
+    local t = frame / SetupClose_FRAMES
+    local e = t < 0.5 and 2 * t * t or 1 - (2 - 2 * t) * (2 - 2 * t) / 2  -- ease in and out
+    local from, to = SetupClose_FROM, SetupClose_TO
+    UI.setAttributes("SetupClose_Ghost", {
+      active = "true",
+      offsetXY = string.format("%.1f %.1f", SetupClose_lerp(from.x, to.x, e), SetupClose_lerp(from.y, to.y, e)),
+      width = string.format("%.1f", SetupClose_lerp(from.w, to.w, e)),
+      height = string.format("%.1f", SetupClose_lerp(from.h, to.h, e)),
+      color = string.format("rgba(0.3, 0.3, 0.3, %.2f)", 0.95 - 0.55 * e),
+    })
+    UI.setAttribute("SetupClose_Image", "color", string.format("rgba(1, 1, 1, %.2f)", 1 - 0.7 * e))
+    if frame < SetupClose_FRAMES then
+      Wait.frames(step, 1)
+    else
+      Wait.frames(function()
+        if run ~= SetupClose_run then return end
+        UI.setAttribute("SetupClose_Ghost", "active", "false")
+        SetupClose_colors = {}
+      end, 2)
+    end
+  end
+  step()
+end

@@ -113,19 +113,27 @@ https://api.tabletopsimulator.com/
   components, see "Includes". Turn order:
   - `ATO_*` ("TURN ORDER"): the setup dropdowns (`settings.TurnOrder` = `"rotating"` /
     `"pass"`, `settings.StartingPlayer` = `"yellow"` / `"random"` / `"draft"`), and for
-    both turn orders setup and race selection: `ATO_startSetup` → reveal / draft →
-    `ATO_finishDraft` → race phase (`ATO.phase == "race"`, one color at a time from
+    both turn orders setup and race selection: `ATO_startSetup` → spin / choose /
+    reveal / draft → `ATO_finishDraft` → race phase (`ATO.phase == "race"`, one color at a time from
     `ATO.raceSlots`) → `ATO_startPlay`. During the draft and race selection the turn
     only moves on with a choice or a pick: `onPlayerTurn` undoes "End Turn". Play with the pass order is `ATO.phase == "play"`.
-    `ATO_startMode()` is the effective starting player mode (Draft only with Pass order
-    and without Random factions, otherwise Random).
+    `ATO_startMode()` is the effective starting player mode (Draft only without Random
+    factions, otherwise Random). Each setup step is shown in the turn order panel and
+    paced with `Wait.time`: `ATO_spin` picks a random player (`ATO.phase == "spin"`,
+    highlighting the players in turn), the rotating draft's chooser takes the start or the
+    first race pick (`"choose"`, `ATO.chooser`, the same two panel buttons as the pass
+    order draft), and `ATO_startReveal(kind, order)` reveals a random order one player at
+    a time (`ATO.revealKind`: `"draft"`, `"pass"` or `"picks"`). A clockwise order isn't
+    random: `ATO_startClockwise` shows it all at once (`"clockwise"`) for
+    `ATO_CLOCKWISE_SECONDS`. A save
+    made mid-spin or mid-reveal skips to the next step on load (`ATO_resume`).
   - `STO_*` ("ROTATING TURN ORDER"): play with the rotating order (`STO_active()`):
     passing, the Direction of Play card. The seats are fixed, so clockwise is always
     Yellow, Red, Green, Blue, Purple, White (`STO_COLOR_ORDER`). That isn't TTS's automatic
     order, so play uses a custom turn order (`Turns.type = 2`) of the seated colors.
   - Saves from before the dropdowns have `settings.AdvancedTurnOrder`;
     `ATO_migrateSettings` turns it into the new settings on load.
-  - Seats randomized after race selection (without Draft): random race pick order,
+  - Seats randomized after race selection (without the pass order Draft): random race pick order (the rotating draft's chooser picks first or last),
     `ATO.orderAfterSeats` is set, and `ATO_startPlay` sets the round 1 order once the
     seats are randomized: clockwise from the last player to pick.
   - The starting techs are drawn at Setup (`gameSetup`), or with the house rule
@@ -153,6 +161,9 @@ https://api.tabletopsimulator.com/
   rules it simulates, and what it leaves out, are at the top of the file. The button is
   added in `placeFaction` and again on load (`CombatSim_restore`: script buttons aren't
   saved). Rift dice: `CombatSim_RIFT_FACES`. The simulation runs as a coroutine (`startLuaCoroutine`), a few battles per frame.
+- `include/SetupClose.ttslua`: closing the setup popup with X (`closeSetupPanel`) shows a
+  copy of it (`SetupClose_Ghost` in the XML) shrinking into the *Setup Options* button, for
+  the player who closed it only. The path assumes Global UI's 1920 wide screen.
 - `include/RaceButtons.ttslua`: hides the race buttons from everyone except the player
   picking a race (`RaceButtons_update`, with `setInvisibleTo`). Called when the race pick
   changes, when race selection ends, and from `updateGameStateBasedOnSettings` (which

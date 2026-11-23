@@ -144,6 +144,7 @@ end
 
 -- Closes the setup panel for a given player.
 function closeSetupPanel(player, elementId)
+    SetupClose_animate(player.color)
     -- remove player color
     for k,v in pairs(ui_visibility) do
       if v == player.color then
@@ -266,6 +267,7 @@ function setupBackground_check()
     if asset.name == "SetupOptions" and asset.url ~= nil and asset.url ~= "" then found = true end
   end
   UI.setAttribute("SetupBackground", "active", found and "true" or "false")
+  UI.setAttribute("SetupClose_Image", "active", found and "true" or "false")
 end
 
 
@@ -416,7 +418,9 @@ function gameSetup()
   -- the starting player and the round 1 turn order, then race selection in turn
   -- (randomized seats before drafting, or, without a draft, before race selection)
   local seatTiming = SEAT_timing()
-  if seatTiming == "draft" or (seatTiming == "race" and not ATO_usesDraft()) then
+  -- (with the rotating draft, the seats decide the clockwise order, so "before faction
+  -- selection" is before the draft too)
+  if seatTiming == "draft" or (seatTiming == "race" and (not ATO_usesDraft() or not ATO_passOrder())) then
     SEAT_randomize(ATO_startSetup)
   else
     ATO_startSetup()
@@ -2001,16 +2005,23 @@ end
 --                     "Pass order": each round is played in the order the players passed
 --                     the round before (formerly the Advanced Turn Order house rule).
 --  "Starting player": "Yellow" (default; or the next seated color after it), "Random", or
---                     "Draft" (pass order only; with rotating, or with random races, it
---                     works as "Random").
--- After "Setup":
+--                     "Draft" (with random races it works as "Random").
+-- After "Setup", every step is shown in the turn order panel, one step at a time:
 --  1. The round 1 turn order is set:
---     - Yellow / Random with rotating: clockwise from the starting player.
+--     - Yellow / Random with rotating (and Yellow with the pass order): clockwise from
+--       the starting player. Random picks the starting player with a "spin" through the
+--       players (ATO_spin). The order is then revealed one player at a time.
 --     - Random with the pass order: a random order, revealed one player at a time.
---     - Draft: the players are put in a random draft order (revealed one at a time). In
---       draft order, each player takes either the best free race pick position or the
---       best free turn order position (for round 1), and is instantly put in the last
---       free position of the other track.
+--     - Draft with the pass order: the players are put in a random draft order (revealed
+--       one at a time). In draft order, each player takes either the best free race pick
+--       position or the best free turn order position (for round 1), and is instantly put
+--       in the last free position of the other track.
+--     - Draft with rotating: a spin picks one player, who chooses (phase "choose") to be
+--       the starting player (and pick a race last) or to pick a race first (and the next
+--       player clockwise starts, so they play last).
+--     - Seats randomized after race selection (not with the pass order draft): a random
+--       race pick order, revealed one at a time; the last to pick starts. A rotating draft
+--       chooser decides whether they pick first or last.
 --  2. Factions are selected in race pick order, one player at a time: the reverse of the
 --     turn order, or the drafted race pick order. Only the player picking sees the race
 --     buttons (RaceButtons_update).
@@ -2028,7 +2039,7 @@ end
 -- how the starting player is chosen: "yellow", "random" or "draft"
 function ATO_startMode()
   local mode = settings.StartingPlayer or "yellow"
-  if mode == "draft" and (not ATO_passOrder() or settings.RandomRaces) then mode = "random" end
+  if mode == "draft" and settings.RandomRaces then mode = "random" end
   return mode
 end
 
@@ -2039,7 +2050,8 @@ end
 -- the turn order code runs setup (before play starts)
 function ATO_inSetup()
   local phase = ATO.phase
-  return phase == "reveal" or phase == "draft" or phase == "seating" or phase == "race"
+  return phase == "spin" or phase == "choose" or phase == "reveal" or phase == "draft"
+    or phase == "seating" or phase == "race"
 end
 
 -- setup dropdowns
@@ -2073,10 +2085,18 @@ local ATO_KEEP_TURNS_AFTER_PASS = true
 -- timing of the draft order reveal after "Setup" is pressed (seconds)
 local ATO_REVEAL_INTRO_SECONDS = 4   -- explanation before the first player is revealed
 local ATO_REVEAL_STEP_SECONDS = 1.5  -- between revealed players, and before the draft starts
+-- the spin that picks a random player
+local ATO_SPIN_INTRO_SECONDS = 3     -- explanation before the spin starts
+local ATO_SPIN_MIN_STEPS = 14        -- names highlighted before it stops (at least)
+local ATO_SPIN_RESULT_SECONDS = 3    -- the result stays on screen before the next step
+local ATO_CLOCKWISE_SECONDS = 5      -- the clockwise round 1 turn order is shown this long
 
 function ATO_defaultState()
   return {
-    phase = "off",      -- "off", "reveal", "draft", "race", "play"
+    phase = "off",      -- "off", "spin", "choose", "reveal", "draft", "seating", "race", "play"
+    spin = nil,         -- phase "spin": { purpose = "start" / "chooser", colors, target, step, total, at, done }
+    chooser = nil,      -- phase "choose": the color choosing (rotating draft)
+    revealKind = nil,   -- phase "reveal": "draft", "pass", "clockwise" or "picks"
     revealed = 0,       -- how many players of the draft order have been revealed
     draftOrder = {},    -- colors, random order in which positions are drafted
     draftIndex = 1,
@@ -2176,6 +2196,7 @@ end
 -- whose turn it must be during the draft and faction selection (nil during play)
 function ATO_expectedTurnColor()
   if ATO.phase == "draft" then return ATO.draftOrder[ATO.draftIndex] end
+  if ATO.phase == "choose" then return ATO.chooser end
   if ATO.phase == "race" then return ATO.raceSlots[ATO.raceIndex] end
   return nil
 end
@@ -2219,49 +2240,156 @@ function ATO_startSetup()
   end
 
   local mode = ATO_startMode()
+  local rotatingDraft = mode == "draft" and not ATO_passOrder()
+
+  -- rotating draft: a random player chooses to start or to pick their faction first
+  if rotatingDraft and #players > 1 then
+    broadcastToAll("Turn order draft: a random player chooses to be the starting player or to pick their faction first.")
+    ATO_spin("chooser")
+    return
+  end
 
   -- seats randomized after race selection: the seats people sit at now decide nothing,
   -- so races are picked in a random order. Once the seats are randomized, the last
   -- player to pick starts and play goes clockwise from them (ATO_startPlay).
   if mode ~= "draft" and SEAT_timing() == "after" then
-    local order = ATO_shuffle(players)
-    ATO.draftOrder = ATO_copy(order)
-    ATO.raceSlots = ATO_copy(order)
-    ATO.draftIndex = #order + 1
-    ATO.orderAfterSeats = true
-    broadcastToAll("Factions are picked in a random order. After faction selection the seats are randomized: the last player to pick starts, and play goes clockwise from them.")
-    ATO_finishDraft()
+    broadcastToAll("The seats are randomized after faction selection, so factions are picked in a random order. The last player to pick starts round 1.")
+    ATO_startReveal("picks", ATO_shuffle(players), ATO_REVEAL_INTRO_SECONDS)
     return
   end
 
-  if mode == "draft" or (mode == "random" and ATO_passOrder()) then
-    -- a random draft order or turn order, revealed one player at a time
-    ATO.phase = "reveal"
-    ATO.revealed = 0
-    ATO.draftOrder = ATO_shuffle(players)
-    if mode == "draft" then
-      broadcastToAll("Turn order draft: the draft order will now be randomized.")
-      broadcastToAll("In draft order, each player picks either the best faction pick position or the best turn order position.")
-    else
-      broadcastToAll("Pass order: the round 1 turn order will now be randomized. Factions are picked in reverse turn order.")
-    end
-    ATO_updateUI()
-    Wait.time(ATO_revealNext, ATO_REVEAL_INTRO_SECONDS)
+  if mode == "draft" and not rotatingDraft then
+    broadcastToAll("Turn order draft: the draft order will now be randomized.")
+    broadcastToAll("In draft order, each player picks either the best faction pick position or the best turn order position.")
+    ATO_startReveal("draft", ATO_shuffle(players), ATO_REVEAL_INTRO_SECONDS)
+    return
+  end
+  if mode == "random" and ATO_passOrder() then
+    broadcastToAll("Pass order: the round 1 turn order will now be randomized. Factions are picked in reverse turn order.")
+    ATO_startReveal("pass", ATO_shuffle(players), ATO_REVEAL_INTRO_SECONDS)
     return
   end
 
   -- a starting player, then clockwise around the table
-  local first
-  if mode == "yellow" then
-    first = STO_yellowOrNext()
-    broadcastToAll("Starting player: " .. ATO_name(first) .. " (" .. first .. ")", first)
-  else
-    first = players[math.random(#players)]
-    broadcastToAll("Starting player, chosen randomly: " .. ATO_name(first), first)
+  if mode == "random" then
+    broadcastToAll("Starting player: choosing a random player.")
+    ATO_spin("start")
+    return
   end
+  local first = mode == "yellow" and STO_yellowOrNext() or players[1]
+  broadcastToAll("Starting player: " .. ATO_name(first) .. " (" .. first .. ")", first)
+  ATO_startClockwise(first)
+end
+
+-- reveal an order one player at a time (kind: see ATO.revealKind), then ATO_beginDraft
+function ATO_startReveal(kind, order, delay)
+  ATO.phase = "reveal"
+  ATO.revealKind = kind
+  ATO.revealed = 0
+  ATO.draftOrder = order
+  ATO_updateUI()
+  Wait.time(ATO_revealNext, delay)
+end
+
+-- round 1 is played clockwise from the starting player: show that order (all at once,
+-- it isn't random) for a while, then carry on
+function ATO_startClockwise(first)
   placeFirstPlayerTile(first)
-  ATO_setOrder(STO_orderFrom(first))
-  ATO_finishDraft()
+  local order = STO_orderFrom(first)
+  ATO.phase = "reveal"
+  ATO.revealKind = "clockwise"
+  ATO.draftOrder = order
+  ATO.revealed = #order
+  ATO_updateUI()
+  Wait.time(ATO_beginDraft, ATO_CLOCKWISE_SECONDS)
+end
+
+-- the kind of the current reveal (saves from before revealKind: the draft or pass order)
+function ATO_revealKindNow()
+  return ATO.revealKind or (ATO_usesDraft() and "draft" or "pass")
+end
+
+-- pick a random player by highlighting the players in turn, slowing down until it
+-- stops on one. purpose: "start" (the starting player) or "chooser" (rotating draft).
+function ATO_spin(purpose)
+  local colors = STO_seatedOrder()
+  local target = math.random(#colors)
+  local cycles = math.max(2, math.ceil(ATO_SPIN_MIN_STEPS / #colors))
+  ATO.phase = "spin"
+  ATO.spin = { purpose = purpose, colors = colors, target = colors[target],
+               step = 0, total = cycles * #colors + target, at = 0, done = false }
+  ATO_updateUI()
+  local spin = ATO.spin
+  Wait.time(function() ATO_spinStep(spin) end, ATO_SPIN_INTRO_SECONDS)
+end
+
+function ATO_spinStep(spin)
+  if ATO.phase ~= "spin" or ATO.spin ~= spin then return end  -- reset or reloaded
+  spin.step = spin.step + 1
+  spin.at = ((spin.step - 1) % #spin.colors) + 1
+  if spin.step >= spin.total then
+    spin.done = true
+    local color = spin.target
+    if spin.purpose == "start" then
+      broadcastToAll("Starting player, chosen at random: " .. ATO_name(color), color)
+    else
+      broadcastToAll(ATO_name(color) .. " was chosen at random.", color)
+    end
+    ATO_updateUI()
+    Wait.time(function() ATO_spinLanded(spin) end, ATO_SPIN_RESULT_SECONDS)
+    return
+  end
+  ATO_updateUI()
+  -- slows down towards the end
+  local t = spin.step / spin.total
+  Wait.time(function() ATO_spinStep(spin) end, 0.06 + 0.6 * t * t * t)
+end
+
+-- the spin has stopped: carry on with the chosen player
+function ATO_spinLanded(spin)
+  if ATO.phase ~= "spin" or ATO.spin ~= spin or spin == nil then return end
+  local color = spin.target
+  ATO.spin = nil
+  if spin.purpose == "start" then
+    ATO_startClockwise(color)
+    return
+  end
+  ATO.phase = "choose"
+  ATO.chooser = color
+  broadcastToAll(ATO_name(color) .. ": be the starting player, or pick your faction first?", color)
+  ATO_setTurns(STO_seatedOrder(), color)
+  ATO_updateUI()
+end
+
+-- rotating draft: the chooser takes the start ("turn") or the first faction pick ("race")
+function ATO_chooseRotating(color, kind)
+  ATO.choice[color] = kind
+  ATO.chooser = nil
+  local clockwise = STO_orderFrom(color)
+
+  -- seats randomized after faction selection: the pick order is random apart from the
+  -- chooser, who picks first or last (the last to pick starts)
+  if SEAT_timing() == "after" then
+    local order = {}
+    for i = 2, #clockwise do table.insert(order, clockwise[i]) end
+    ATO_shuffle(order)
+    table.insert(order, kind == "race" and 1 or #order + 1, color)
+    broadcastToAll(kind == "race"
+      and ATO_name(color) .. " picks their faction first. The others pick in a random order, and the last to pick starts round 1."
+      or ATO_name(color) .. " starts round 1 and picks their faction last. The others pick in a random order.", color)
+    ATO_startReveal("picks", order, ATO_REVEAL_STEP_SECONDS)
+    return
+  end
+
+  -- turn order clockwise from the starting player, factions picked in the reverse order
+  local first = kind == "turn" and color or clockwise[2]
+  if kind == "turn" then
+    broadcastToAll(ATO_name(color) .. " is the starting player and picks their faction last.", color)
+  else
+    broadcastToAll(string.format("%s picks their faction first. %s is the starting player, so %s plays last in round 1.",
+      ATO_name(color), ATO_name(first), ATO_name(color)), color)
+  end
+  ATO_startClockwise(first)
 end
 
 -- reveal the next player of the random draft order
@@ -2289,9 +2417,18 @@ function ATO_beginDraft()
   if ATO.phase ~= "reveal" then return end
   ATO.revealed = #ATO.draftOrder
 
+  local kind = ATO_revealKindNow()
+  -- a race pick order (seats randomized after race selection): the last to pick starts
+  if kind == "picks" then
+    ATO.raceSlots = ATO_copy(ATO.draftOrder)
+    ATO.draftIndex = #ATO.draftOrder + 1
+    ATO.orderAfterSeats = true
+    ATO_finishDraft()
+    return
+  end
   -- no draft: the revealed order is the round 1 turn order, and races are picked
   -- in the reverse order
-  if not ATO_usesDraft() then
+  if kind ~= "draft" then
     ATO_setOrder(ATO.draftOrder)
     ATO_finishDraft()
     return
@@ -2307,6 +2444,10 @@ end
 
 -- after loading a game saved mid-reveal, skip straight to the draft
 function ATO_resume()
+  -- saved mid-spin: the player was already picked
+  if ATO.phase == "spin" then
+    if ATO.spin ~= nil then ATO_spinLanded(ATO.spin) else ATO.phase = "off" end
+  end
   if ATO.phase == "reveal" then ATO_beginDraft() end
   -- saved while the seats were being randomized: finish that step
   if ATO.phase == "seating" then
@@ -2380,6 +2521,16 @@ function ATO_ChooseRace(player) ATO_choose(player, "race") end
 function ATO_ChooseTurn(player) ATO_choose(player, "turn") end
 
 function ATO_choose(player, kind)
+  if ATO.phase == "choose" then
+    local chooser = ATO.chooser
+    if chooser == nil then return end
+    if player.color ~= chooser and not ATO_isHotseat() then
+      player.broadcast("It is " .. ATO_name(chooser) .. "'s turn to choose.", {1, 0.4, 0.4})
+      return
+    end
+    ATO_chooseRotating(chooser, kind)
+    return
+  end
   if ATO.phase ~= "draft" or ATO_isLastDrafter() then return end
   local color = ATO.draftOrder[ATO.draftIndex]
   -- the choice always goes to the next player in the draft order; in hot seat the
@@ -2475,8 +2626,8 @@ function ATO_canPickRace(color)
     broadcastToColor("Faction selection is over.", color, {1, 0.4, 0.4})
     return false, color
   end
-  if ATO.phase == "reveal" or ATO.phase == "draft" then
-    broadcastToColor("Finish the turn order draft before selecting factions.", color, {1, 0.4, 0.4})
+  if ATO.phase == "reveal" or ATO.phase == "draft" or ATO.phase == "spin" or ATO.phase == "choose" then
+    broadcastToColor("Wait until the turn order is decided before selecting factions.", color, {1, 0.4, 0.4})
     return false, color
   end
   if ATO.phase == "seating" then
@@ -2655,8 +2806,9 @@ function onPlayerTurn(player, previous_player)
        and (Player[expected].seated or ATO_isHotseat()) then
       -- the turn only moves on with a choice or a race pick
       if previous_player ~= nil and previous_player.color == expected then
-        local hint = ATO.phase == "race" and "Select a faction to end your turn."
-          or "Choose the best faction pick or the best turn order position to end your turn."
+        local hint = "Choose the best faction pick or the best turn order position to end your turn."
+        if ATO.phase == "race" then hint = "Select a faction to end your turn." end
+        if ATO.phase == "choose" then hint = "Choose to be the starting player or to pick your faction first." end
         broadcastToColor(hint, expected, {1, 0.8, 0.4})
       end
       -- set it back, and again once TTS has settled
@@ -2743,12 +2895,73 @@ function ATO_updateUI()
     local text = ""
     UI.setAttribute("ATO_Panel", "active", "true")
 
-    if ATO.phase == "reveal" then
+    if ATO.phase == "spin" and ATO.spin ~= nil then
+      local spin = ATO.spin
+      local lines = {}
+      for i, color in ipairs(spin.colors) do
+        if i == spin.at then
+          lines[i] = "<color=#ffd34d><b>>  " .. ATO_name(color) .. "</b></color>"
+        else
+          lines[i] = "    " .. ATO_name(color)
+        end
+      end
+      local chosen = ATO_name(spin.target)
+      if spin.purpose == "start" then
+        text = "<b>Choosing the starting player...</b>\n\n" ..
+          "A random player starts round 1. Play goes clockwise from them, and factions are " ..
+          "picked in the reverse order: the starting player picks last.\n\n"
+        if spin.done then text = text .. "<b>" .. chosen .. " is the starting player!</b>\n\n" end
+      else
+        text = "<b>Turn order draft: choosing a player...</b>\n\n" ..
+          "A random player chooses: be the starting player (and pick a faction last), or pick " ..
+          "a faction first (and the next player clockwise starts).\n\n"
+        if spin.done then text = text .. "<b>" .. chosen .. " chooses!</b>\n\n" end
+      end
+      text = text .. "<b>Players, clockwise</b>\n" .. table.concat(lines, "\n")
+      UI.setAttribute("ATO_Buttons", "active", "false")
+    elseif ATO.phase == "choose" then
+      local color = ATO.chooser
+      local name = ATO_name(color)
+      local clockwise = STO_orderFrom(color)
+      local nextName = ATO_name(clockwise[2])
+      text = "<b>Turn order draft</b> - choosing: " .. name .. "\n\n"
+      if SEAT_timing() == "after" then
+        text = text .. "The seats are randomized after faction selection, and the last player to " ..
+          "pick a faction starts round 1. The others pick in a random order.\n\n" ..
+          "<b>Starting player:</b> " .. name .. " picks a faction last, and starts.\n\n" ..
+          "<b>First faction pick:</b> " .. name .. " picks a faction first.\n\n"
+      else
+        text = text .. "<b>Starting player:</b> " .. name .. " starts round 1, and picks a faction " ..
+          "last.\n\n" ..
+          "<b>First faction pick:</b> " .. name .. " picks a faction first. " .. nextName ..
+          " starts round 1, and " .. name .. " plays last.\n\n"
+      end
+      local lines = {}
+      for i, c in ipairs(clockwise) do lines[i] = ATO_name(c) end
+      text = text .. "<b>Players, clockwise</b>\n" .. table.concat(lines, "\n")
+      UI.setAttribute("ATO_RaceButton", "text", "First faction pick")
+      UI.setAttribute("ATO_TurnButton", "text", "Starting player")
+      UI.setAttribute("ATO_Buttons", "visibility", ATO_isHotseat() and "" or (color or ""))
+      UI.setAttribute("ATO_Buttons", "active", "true")
+    elseif ATO.phase == "reveal" then
       local lines = {}
       for i = 1, #ATO.draftOrder do
         lines[i] = string.format("%d. %s", i, i <= ATO.revealed and ATO_name(ATO.draftOrder[i]) or "?")
       end
-      if not ATO_usesDraft() then
+      local kind = ATO_revealKindNow()
+      if kind == "clockwise" then
+        local first, last = ATO.draftOrder[1], ATO.draftOrder[#ATO.draftOrder]
+        text = "<b>Starting player: " .. ATO_name(first) .. "</b>\n\n" ..
+          "Play goes clockwise from the starting player. Factions " ..
+          "are picked in the reverse order: " .. ATO_name(last) .. " picks first, " ..
+          ATO_name(first) .. " last.\n\n" ..
+          "<b>Round 1 turn order (clockwise)</b>\n" .. table.concat(lines, "\n")
+      elseif kind == "picks" then
+        text = "<b>Randomizing the faction pick order...</b>\n\n" ..
+          "The seats are randomized after faction selection. The last player to pick a faction " ..
+          "starts round 1, clockwise from their new seat.\n\n" ..
+          "<b>Faction pick order</b>\n" .. table.concat(lines, "\n")
+      elseif kind == "pass" then
         text = "<b>Randomizing the turn order...</b>\n\n" ..
           "This is the round 1 turn order. Factions are picked in the reverse order.\n\n" ..
           "<b>Turn order</b>\n" .. table.concat(lines, "\n")
@@ -2778,11 +2991,13 @@ function ATO_updateUI()
       UI.setAttribute("ATO_Buttons", "active", "false")
     else
       local current = ATO.raceSlots[ATO.raceIndex]
-      text = "<b>Faction selection</b> - picking: " .. ATO_name(current) .. "\n\n" ..
+      -- random factions: nobody picks, a faction is drawn for each player
+      local picking = settings.RandomRaces and "selecting random" or "picking"
+      text = "<b>Faction selection</b> - " .. picking .. ": " .. ATO_name(current) .. "\n\n" ..
         "<b>Faction pick order</b>\n" .. ATO_slotLines(ATO.raceSlots, count, function(color)
           local faction = PlayerSelection[color]
           if faction ~= nil and faction ~= 'none' then return " (" .. faction .. ")" end
-          if color == current then return "  (picking)" end
+          if color == current then return "  (" .. picking .. ")" end
           return ""
         end) .. "\n\n" ..
         roundOneText
@@ -2790,7 +3005,7 @@ function ATO_updateUI()
     end
 
     UI.setValue("ATO_Text", text)
-    ATO_fitPanel(text, ATO.phase == "draft" and not ATO_isLastDrafter())
+    ATO_fitPanel(text, ATO.phase == "choose" or (ATO.phase == "draft" and not ATO_isLastDrafter()))
   else
     UI.setAttribute("ATO_Panel", "active", "false")
   end
@@ -2911,3 +3126,9 @@ end
 -- Combat simulator on the player boards (scripts/include/CombatSim.ttslua)
 --------------------------------------------------------------------------------
 #include CombatSim
+
+
+--------------------------------------------------------------------------------
+-- Closing the setup popup: it flies to the Setup Options button (scripts/include/SetupClose.ttslua)
+--------------------------------------------------------------------------------
+#include SetupClose

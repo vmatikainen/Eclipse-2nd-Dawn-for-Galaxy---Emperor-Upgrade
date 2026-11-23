@@ -290,6 +290,10 @@
               	tooltip="Give every player a random faction instead of picking one. The Terran factions count as one faction, and Pyxis Unity is never drawn. Factions are given out in faction pick order. There is no draft: Draft as starting player works as Random.">
               Random factions </Toggle>
 			</HorizontalLayout>
+			<!-- separator: Randomize seat order and its timing dropdown belong together -->
+			<HorizontalLayout minHeight="1" preferredHeight="1" flexibleHeight="0" childForceExpandWidth="false" childAlignment="MiddleCenter" padding="0 20 0 0">
+				<Panel preferredWidth="300" flexibleWidth="0" color="rgba(1,1,1,0.4)"></Panel>
+			</HorizontalLayout>
 			<HorizontalLayout flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="false" spacing="0">
 			<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
 				id="RandomizeSeats" onValueChanged="SetupUI_OnChange"
@@ -331,7 +335,7 @@
 				<HorizontalLayout flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="false" spacing="0">
 				<Text minWidth="200" preferredWidth="200" flexibleWidth="0" minHeight="30" preferredHeight="30" flexibleHeight="0"
 					tooltipBackgroundColor="rgba(0,0,0,0.95)"
-					tooltip="Who starts round 1. Factions are then picked one player at a time, in reverse turn order.&#10;&#10;Yellow: the Yellow player (or the next seated player after Yellow).&#10;Random: a random player. With the pass order, the whole round 1 turn order is random.&#10;Draft (pass order only): in a random draft order, each player takes either the best faction pick position or the best turn order position, and gets the last free position of the other. With Rotating or Random factions it works as Random.">
+					tooltip="Who starts round 1. Factions are then picked one player at a time, in reverse turn order.&#10;&#10;Yellow: the Yellow player (or the next seated player after Yellow).&#10;Random: a random player. With the pass order, the whole round 1 turn order is random.&#10;Draft, with Rotating: a random player chooses to be the starting player (and pick a faction last) or to pick a faction first (and the next player clockwise starts).&#10;Draft, with Pass order: in a random draft order, each player takes either the best faction pick position or the best turn order position, and gets the last free position of the other.&#10;With Random factions, Draft works as Random.">
 				Starting player </Text>
 
 				<Dropdown id="StartingPlayer" minWidth="140" preferredWidth="140" flexibleWidth="0"
@@ -390,4 +394,19 @@
 		</VerticalLayout>
 	</Panel>
 
+</Panel>
+
+
+<!-- Copy of the setup popup that flies to the Setup Options button when the popup is closed with X (scripts/include/SetupClose.ttslua) -->
+<Panel id="SetupClose_Ghost"
+	active="false"
+	rectAlignment="UpperCenter"
+	offsetXY="0 -160"
+	width="400"
+	height="872"
+	raycastTarget="false"
+	color="rgba(0.3, 0.3, 0.3, 0.95)"
+	outline="Grey"
+	outlineSize="2 -2">
+	<Image id="SetupClose_Image" image="SetupOptions" preserveAspect="true" rectAlignment="UpperCenter" raycastTarget="false"></Image>
 </Panel>

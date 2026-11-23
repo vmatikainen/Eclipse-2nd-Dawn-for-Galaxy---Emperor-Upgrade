@@ -176,6 +176,7 @@ function SEAT_remap(mapping)
   mapList(ATO.order)
   mapList(ATO.passOrder)
   mapList(settings.PassOrder)
+  ATO.chooser = map(ATO.chooser)
 
   local choice = {}
   for color, value in pairs(ATO.choice) do choice[map(color)] = value end

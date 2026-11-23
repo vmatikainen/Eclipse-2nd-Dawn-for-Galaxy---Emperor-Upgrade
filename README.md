@@ -142,16 +142,29 @@ explanation.
 
 - **Yellow** (default): the Yellow player starts. If nobody sits at Yellow, the next
   seated player after it does.
-- **Random:** a random player starts. With *Pass order* the whole round 1 turn order is
-  random, revealed one player at a time.
-- **Draft** (*Pass order* only): after *Setup*, players are put in a random draft order,
+- **Random:** a random player starts. With *Rotating* the players are highlighted in
+  turn, slowing down until it stops on the starting player. The round 1 turn order is
+  clockwise from them. With *Pass order* the whole
+  round 1 turn order is random, revealed one player at a time.
+- **Draft with Rotating:** a random player is picked the same way, and chooses with the
+  buttons in the turn order panel:
+  - **Starting player:** they start round 1, and pick their faction last.
+  - **First faction pick:** they pick their faction first. The next player clockwise
+    starts, so they play last in round 1.
+- **Draft with Pass order:** after *Setup*, players are put in a random draft order,
   revealed one at a time. On their turn, each player takes either the best free faction pick
   position or the best free turn order position, and is put in the last free position of
   the other track at the same time. The last player in the draft gets the remaining
-  positions automatically. With *Rotating*, or with *Random factions*, *Draft* works as
-  *Random*.
+  positions automatically.
+- With *Random factions*, *Draft* works as *Random*.
 
 So the old Advanced Turn Order is *Pass order* + *Draft*.
+
+Every step after *Setup* is shown one at a time in the turn order panel, with what is
+being randomized and what it decides: the random pick, the choice, and then the round 1
+turn order. A clockwise turn order is shown all at once for a few seconds. A random
+order (the pass order, the draft order, or a random faction pick order) is revealed one
+player at a time.
 
 **Faction selection** always comes after *Setup*, one player at a time: in reverse turn
 order (the player before the starting player picks first, the starting player last), or
@@ -169,14 +182,16 @@ happens in the dropdown next to it:
 
 - **Before drafting:** when *Setup* is pressed, before the draft. Without *Draft* as the
   starting player this works like *Before faction selection*.
-- **Before faction selection:** after the draft, or when *Setup* is pressed (before the
-  starting player is chosen) if there is no draft.
+- **Before faction selection:** after the *Pass order* draft. Otherwise when *Setup* is
+  pressed, before the starting player is chosen. (With *Rotating*, the seats decide the
+  clockwise order, so they're randomized before the draft too.)
 - **After faction selection** (default): players pick factions first, but nothing is set
   up yet. Once everyone has picked, the seats are randomized and each faction is set up
   at its player's new seat. The seats people sit at before that decide nothing, so
-  (except with *Draft*) factions are picked in a random order, and the starting player
-  setting isn't used: the last player to pick starts, and play goes clockwise from
-  their new seat.
+  (except with the *Pass order* draft) factions are picked in a random order, and the
+  starting player setting isn't used: the last player to pick starts, and play goes
+  clockwise from their new seat. With the *Rotating* draft, the chosen player decides
+  whether they pick first or last (and so start).
 
 The seated players are moved to a random order of the seats they already use, by
 changing their player colors. Draft results, faction picks and the turn order go with the
