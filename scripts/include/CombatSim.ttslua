@@ -85,7 +85,7 @@ CombatSim_counts = { you = CombatSim_noShips(), opp = CombatSim_noShips() }
 --------------------------------------------------------------------------------
 -- the button on the player boards
 
--- the house rule "Combat calculator" (settings.CombatSim), on by default: saves from
+-- the house rule "Combat Simulator" (settings.CombatSim), on by default: saves from
 -- before the setting don't have it, and get the button
 function CombatSim_enabled()
   return settings.CombatSim ~= false

@@ -213,7 +213,7 @@ Tick **Random factions** under *Options* in the setup popup. Nobody picks a fact
 ## Combat simulator
 
 Every player board has a **Combat Sim** button, between the Actions card and the
-Interceptor blueprint. It's the **Combat calculator** house rule in the setup popup, on by
+Interceptor blueprint. It's the **Combat Simulator** house rule in the setup popup, on by
 default: untick it to play without the button. It opens a panel where you set how many interceptors, cruisers,
 dreadnoughts and starbases (Exiles: orbitals) you have, whether you are **Attacking** or
 **Defending**, and the opponent in the *Opponent* dropdown: **Ancients** or another
