@@ -163,7 +163,13 @@ https://api.tabletopsimulator.com/
   player, their ship rows and Simulate. `CombatSim_updateUI` sets the panel height to match. The battle
   rules it simulates, and what it leaves out, are at the top of the file. The button is
   added in `placeFaction` and again on load (`CombatSim_restore`: script buttons aren't
-  saved). Rift dice: `CombatSim_RIFT_FACES`. The simulation runs as a coroutine (`startLuaCoroutine`), a few battles per frame.
+  saved). Rift dice: `CombatSim_RIFT_FACES`. Each ship row's Edit button opens `CombatSim_Editor`: the
+  ship's stats as an editable copy (`CombatSim_edits[side][ship]`, made from the game's on the
+  first change, with `base` = the game's design then; `CombatSim_dropStaleEdits` drops it on
+  opening once the design has changed), which `CombatSim_shipStats` returns in place of the game's (`CombatSim_gameStats`).
+  Special ancient parts add only their effect flag (`CombatSim_SPECIALS`: `regenerate`).
+  Antimatter Splitter is per side (`CombatSim_splitter[side]`, nil = as in the game,
+  read with `TechTrack_has(color, tech)`): red cannon hits become four 1-damage hits. The simulation runs as a coroutine (`startLuaCoroutine`), a few battles per frame.
 - `include/SetupClose.ttslua`: closing the setup popup with X (`closeSetupPanel`) shows a
   copy of it (`SetupClose_Ghost` in the XML) shrinking into the *Setup Options* button, for
   the player who closed it only. The path assumes Global UI's 1920 wide screen.

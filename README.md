@@ -227,6 +227,19 @@ winning, losing and drawing, and how many of each ship survive on average when w
   Against NPCs you always attack.
 - Ships are each player's blueprints as they are now, including upgrades. The NPCs are
   the variants this game uses (randomized Ancients, Guardians and GCDS included).
+- **Edit** (on each ship row) opens an editor beside the panel, starting from the ship as
+  it is in the game. Change its initiative, computer, shield, hull, and its cannon and
+  missile dice of each color, and add the effect of a special ancient part (**Morph
+  Shield**: repairs 1 damage per round) without its stats. Energy and slots aren't
+  checked. An edited ship's line says *Edited*; **Reset to game state** undoes it. Edits
+  stay until reset, or until you open another player's panel or pick another opponent.
+  If the ship's design changes in the game (an upgrade) while the panel is closed, its
+  edit is dropped when the panel opens again; the same goes for Antimatter Splitter when
+  the player gains or loses the tech.
+- **Antimatter Splitter** (in the editor) is a tech, so it's for all of that player's
+  ships. It starts as in the game (the player has the tile on a tech space) and can be
+  switched. With it, each hit of an antimatter (red) cannon die is split into four
+  1-damage hits, which can go to any ships the die's roll hits.
 - Missiles fire first, then cannons in initiative order; on a tie the defender fires
   first. NPCs always defend.
 - Ships without cannons (missile boats) escape after firing their missiles; starbases

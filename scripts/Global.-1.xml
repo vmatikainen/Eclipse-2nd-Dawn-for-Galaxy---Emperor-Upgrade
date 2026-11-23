@@ -104,6 +104,7 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(interceptor)">-</Button>
 				<Text id="CombatSim_interceptor_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(interceptor)">+</Button>
+				<Button id="CombatSim_interceptor_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(interceptor)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_interceptor_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
@@ -111,6 +112,7 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(cruiser)">-</Button>
 				<Text id="CombatSim_cruiser_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(cruiser)">+</Button>
+				<Button id="CombatSim_cruiser_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(cruiser)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_cruiser_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
@@ -118,6 +120,7 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(dreadnought)">-</Button>
 				<Text id="CombatSim_dreadnought_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(dreadnought)">+</Button>
+				<Button id="CombatSim_dreadnought_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(dreadnought)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_dreadnought_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
@@ -125,6 +128,7 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(starbase)">-</Button>
 				<Text id="CombatSim_starbase_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(starbase)">+</Button>
+				<Button id="CombatSim_starbase_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(starbase)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_starbase_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 		</VerticalLayout>
@@ -155,6 +159,7 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(opp_interceptor)">-</Button>
 				<Text id="CombatSim_opp_interceptor_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(opp_interceptor)">+</Button>
+				<Button id="CombatSim_opp_interceptor_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(opp_interceptor)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_opp_interceptor_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
@@ -162,6 +167,7 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(opp_cruiser)">-</Button>
 				<Text id="CombatSim_opp_cruiser_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(opp_cruiser)">+</Button>
+				<Button id="CombatSim_opp_cruiser_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(opp_cruiser)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_opp_cruiser_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
@@ -169,6 +175,7 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(opp_dreadnought)">-</Button>
 				<Text id="CombatSim_opp_dreadnought_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(opp_dreadnought)">+</Button>
+				<Button id="CombatSim_opp_dreadnought_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(opp_dreadnought)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_opp_dreadnought_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
@@ -176,12 +183,110 @@
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_minus(opp_starbase)">-</Button>
 				<Text id="CombatSim_opp_starbase_Count" preferredWidth="28" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
 				<Button preferredWidth="28" flexibleWidth="0" onClick="CombatSim_plus(opp_starbase)">+</Button>
+				<Button id="CombatSim_opp_starbase_Edit" preferredWidth="44" flexibleWidth="0" fontSize="12" tooltip="Change this ship's stats for the simulation" onClick="CombatSim_edit(opp_starbase)">Edit</Button>
 			</HorizontalLayout>
 			<Text id="CombatSim_opp_starbase_Info" preferredHeight="18" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
 		</VerticalLayout>
 
 		<Text id="CombatSim_Result" preferredHeight="160" flexibleHeight="0" fontSize="12" alignment="UpperLeft"></Text>
 	</VerticalLayout>
+
+	<!-- the ship editor, beside the panel: opened with a ship row's Edit button -->
+	<Panel id="CombatSim_Editor" active="false" rectAlignment="UpperLeft" pivot="0 1" width="300" height="476" offsetXY="426 0" color="rgba(0.15, 0.15, 0.15, 0.95)" outline="Grey" outlineSize="2 -2">
+		<VerticalLayout padding="8 8 8 8" spacing="4" childAlignment="UpperLeft" childForceExpandHeight="false">
+			<Text id="CombatSim_Edit_Title" preferredHeight="22" flexibleHeight="0" fontSize="14" fontStyle="Bold"></Text>
+			<Text id="CombatSim_Edit_Status" preferredHeight="16" flexibleHeight="0" fontSize="11" color="#cccccc"></Text>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13">Initiative</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(initiative)">-</Button>
+				<Text id="CombatSim_Edit_initiative" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(initiative)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13">Computer</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(computer)">-</Button>
+				<Text id="CombatSim_Edit_computer" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(computer)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13">Shield</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(shield)">-</Button>
+				<Text id="CombatSim_Edit_shield" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(shield)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13">Hull</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(hull)">-</Button>
+				<Text id="CombatSim_Edit_hull" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(hull)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="18" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="12" color="#cccccc">Dice</Text>
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="12" alignment="MiddleCenter" color="#cccccc">Cannons</Text>
+				<Panel preferredWidth="8" flexibleWidth="0"></Panel>
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="12" alignment="MiddleCenter" color="#cccccc">Missiles</Text>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13" color="#ffd34d">Yellow (1)</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(cannon_yellow)">-</Button>
+				<Text id="CombatSim_Edit_cannon_yellow" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(cannon_yellow)">+</Button>
+				<Panel preferredWidth="8" flexibleWidth="0"></Panel>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(missile_yellow)">-</Button>
+				<Text id="CombatSim_Edit_missile_yellow" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(missile_yellow)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13" color="#ff9a3c">Orange (2)</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(cannon_orange)">-</Button>
+				<Text id="CombatSim_Edit_cannon_orange" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(cannon_orange)">+</Button>
+				<Panel preferredWidth="8" flexibleWidth="0"></Panel>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(missile_orange)">-</Button>
+				<Text id="CombatSim_Edit_missile_orange" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(missile_orange)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13" color="#6fb4ff">Blue (3)</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(cannon_blue)">-</Button>
+				<Text id="CombatSim_Edit_cannon_blue" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(cannon_blue)">+</Button>
+				<Panel preferredWidth="8" flexibleWidth="0"></Panel>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(missile_blue)">-</Button>
+				<Text id="CombatSim_Edit_missile_blue" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(missile_blue)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13" color="#ff6060">Red (4)</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(cannon_red)">-</Button>
+				<Text id="CombatSim_Edit_cannon_red" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(cannon_red)">+</Button>
+				<Panel preferredWidth="8" flexibleWidth="0"></Panel>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(missile_red)">-</Button>
+				<Text id="CombatSim_Edit_missile_red" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(missile_red)">+</Button>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="24" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Text preferredWidth="90" flexibleWidth="0" fontSize="13" color="#ff7ad9">Pink (rift)</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editMinus(cannon_pink)">-</Button>
+				<Text id="CombatSim_Edit_cannon_pink" preferredWidth="30" flexibleWidth="0" alignment="MiddleCenter" fontSize="14">0</Text>
+				<Button preferredWidth="26" flexibleWidth="0" onClick="CombatSim_editPlus(cannon_pink)">+</Button>
+			</HorizontalLayout>
+			<Text preferredHeight="18" flexibleHeight="0" fontSize="12" color="#cccccc">Ancient parts (their effect only, not their stats)</Text>
+			<HorizontalLayout preferredHeight="26" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="4">
+				<Button id="CombatSim_Edit_regenerate" preferredWidth="130" flexibleWidth="0" fontSize="13" tooltip="Repairs 1 damage at the end of each engagement round" onClick="CombatSim_editToggle(regenerate)">Morph Shield</Button>
+			</HorizontalLayout>
+			<Text preferredHeight="18" flexibleHeight="0" fontSize="12" color="#cccccc">Faction tech (all of this player's ships)</Text>
+			<HorizontalLayout preferredHeight="26" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="8">
+				<Button id="CombatSim_Edit_splitter" preferredWidth="150" flexibleWidth="0" fontSize="13" tooltip="Antimatter cannon damage can be split freely over the ships the die hits" onClick="CombatSim_editSplitter">Antimatter Splitter</Button>
+				<Text id="CombatSim_Edit_splitterNote" preferredWidth="110" flexibleWidth="0" fontSize="11" color="#cccccc"></Text>
+			</HorizontalLayout>
+			<HorizontalLayout preferredHeight="28" flexibleHeight="0" childForceExpandWidth="false" childForceExpandHeight="true" spacing="6">
+				<Button preferredWidth="170" flexibleWidth="0" fontSize="13" tooltip="Use the ship as it is in the game again" onClick="CombatSim_editReset">Reset to game state</Button>
+				<Button preferredWidth="100" flexibleWidth="0" fontSize="13" onClick="CombatSim_editClose">Close</Button>
+			</HorizontalLayout>
+		</VerticalLayout>
+	</Panel>
 
 	<!-- the dropdown's options, under the Opponent button; last, so it is drawn on top -->
 	<Panel id="CombatSim_List" active="false" rectAlignment="UpperLeft" pivot="0 1" width="220" height="200" offsetXY="96 -322" color="#222222" outline="Grey" outlineSize="1 -1">

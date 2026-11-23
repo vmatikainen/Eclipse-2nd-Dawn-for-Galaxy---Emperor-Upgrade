@@ -113,6 +113,22 @@ local function printedTech(color, snap)
   return printed and printed[snap]
 end
 
+-- does a color have a tech (short name, e.g. "Antimatter Splitter")? A locked tile on
+-- one of its tech spaces, or a start tech printed on its board.
+function TechTrack_has(color, tech)
+  local printed = TECH_PRINTED[PlayerState_faction(color) or ""] or {}
+  for _, name in pairs(printed) do
+    if name == tech then return true end
+  end
+  for _, tile in ipairs(getObjectsWithTag("TechTile")) do
+    if tile.getLock() and select(2, techKind(tile)) == tech then
+      local where = TechTrack_spaceAt(tile)
+      if where ~= nil and where.color == color then return true end
+    end
+  end
+  return false
+end
+
 -- another tech tile already lying on the same space, or nil
 local function occupant(obj, where)
   for _, other in ipairs(getObjectsWithTag("TechTile")) do

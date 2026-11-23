@@ -35,6 +35,18 @@
 --    ship it can (largest to smallest), else on the largest.
 --  - A battle still going after CombatSim_MAX_ROUNDS rounds is a draw.
 --  - Not simulated: retreating (other than missile boats).
+--
+-- Editing ships: each ship row has an Edit button that opens CombatSim_Editor beside the
+-- panel. It starts from the ship as it is in the game and changes initiative, computer,
+-- shield, hull and the cannon and missile dice of each color, and adds the effect of
+-- special ancient parts (Morph Shield) without their stats. Energy and slots aren't
+-- checked. Edits are kept until reset, or until the owner or the opponent changes. An
+-- edit is also dropped when the panel opens if the game's ship design has changed since
+-- it was made (CombatSim_dropStaleEdits).
+-- The editor also switches Antimatter Splitter (a tech, so for all of a side's ships),
+-- which starts from whether the player has the tech (TechTrack_has). With it, each hit of
+-- an antimatter (red) cannon die becomes 4 hits of 1 damage with the same roll, so the
+-- damage can be split over the ships that roll hits.
 
 local CombatSim_RUN_CHOICES = { 1000, 5000 }  -- the battles per simulation the panel offers
 local CombatSim_FRAME_TIME = 0.04   -- seconds of battles per frame, so the game doesn't freeze
@@ -65,6 +77,19 @@ local CombatSim_RIFT_FACES = {
   { hit = 3, self = 1 }, { hit = 0, self = 1 }, { hit = 0, self = 0 },
 }
 
+-- the ship editor: dice by color (damage per hit; pink is the rift die, a cannon only)
+local CombatSim_DICE = {
+  { color = "yellow", damage = 1 },
+  { color = "orange", damage = 2 },
+  { color = "blue",   damage = 3 },
+  { color = "red",    damage = 4 },
+  { color = "pink",   rift = true },
+}
+local CombatSim_EDIT_STATS = { "initiative", "computer", "shield", "hull" }
+-- ancient parts whose effect can be added: key in the stats, as ShipData names it
+local CombatSim_SPECIALS = { "regenerate" }
+local CombatSim_EDIT_MAX = 20  -- highest value of a stat or dice count
+
 CombatSim_owner = nil      -- color whose ships are simulated ("you")
 CombatSim_viewer = nil     -- color the panel is shown to
 CombatSim_opponent = "npc" -- "npc" (Ancients, GCDS, Guardian) or a player color
@@ -74,6 +99,10 @@ CombatSim_counts = nil     -- { you = { ship = count }, opp = { ship = count } }
 CombatSim_job = nil        -- the simulation running now
 CombatSim_runs = 1000      -- battles per simulation (chosen in the panel)
 CombatSim_lastResult = nil
+CombatSim_edits = { you = {}, opp = {} }  -- [side][ship] = edited ship (CombatSim_editOf), or nil
+CombatSim_editing = nil    -- the ship in the editor: { side = , ship = }, or nil
+-- Antimatter Splitter per side, when switched to differ from the game; nil: as in the game
+CombatSim_splitter = { you = nil, opp = nil }
 
 local function CombatSim_noShips()
   local counts = {}
@@ -172,6 +201,8 @@ function CombatSim_open(board, playerColor)
   end
   if owner ~= CombatSim_owner then
     CombatSim_counts.you = CombatSim_noShips()
+    CombatSim_edits.you = {}
+    CombatSim_splitter.you = nil
     CombatSim_lastResult = nil
   end
   CombatSim_owner = owner
@@ -181,7 +212,9 @@ function CombatSim_open(board, playerColor)
   if oppColor ~= nil and (oppColor == owner or PlayerState_faction(oppColor) == nil) then
     CombatSim_setOpponent("npc")
   end
+  CombatSim_dropStaleEdits()
   CombatSim_listOpen = false
+  CombatSim_editing = nil
   UI.setAttribute("CombatSim_List", "active", "false")
   UI.setAttribute("CombatSim_Panel", "visibility", playerColor)
   UI.setAttribute("CombatSim_Panel", "active", "true")
@@ -204,6 +237,8 @@ end
 function CombatSim_setOpponent(opponent)
   if opponent ~= CombatSim_opponent then
     CombatSim_counts.opp = CombatSim_noShips()
+    CombatSim_edits.opp = {}
+    CombatSim_splitter.opp = nil
     CombatSim_lastResult = nil
   end
   CombatSim_opponent = opponent
@@ -260,11 +295,228 @@ function CombatSim_change(value, delta)
   CombatSim_updateUI()
 end
 
--- a side's blueprint stats for a ship type, or nil (e.g. Rho Indi has no dreadnought)
-function CombatSim_shipStats(side, ship)
+-- a side's blueprint stats in the game for a ship type, or nil (e.g. Rho Indi has no
+-- dreadnought)
+function CombatSim_gameStats(side, ship)
   local color = CombatSim_sideColor(side)
   if color == nil or PlayerState_faction(color) == nil then return nil end
   return ShipState_stats(color, ship)
+end
+
+-- the stats simulated for a ship type: the edited ship, else the game's, with the side's
+-- Antimatter Splitter (splitter = true, splitterEdited when it differs from the game)
+function CombatSim_shipStats(side, ship)
+  local game = CombatSim_gameStats(side, ship)
+  if game == nil then return nil end
+  local stats = {}
+  local edit = CombatSim_edits[side][ship]
+  if edit ~= nil then stats = CombatSim_statsOfEdit(edit)
+  else for key, value in pairs(game) do stats[key] = value end end
+  stats.splitter = CombatSim_hasSplitter(side)
+  stats.splitterEdited = CombatSim_splitter[side] ~= nil
+  return stats
+end
+
+-- does a side's player have Antimatter Splitter in the game?
+function CombatSim_gameSplitter(side)
+  local color = CombatSim_sideColor(side)
+  return color ~= nil and TechTrack_has(color, "Antimatter Splitter")
+end
+
+-- Antimatter Splitter as simulated for a side
+function CombatSim_hasSplitter(side)
+  if CombatSim_splitter[side] ~= nil then return CombatSim_splitter[side] end
+  return CombatSim_gameSplitter(side)
+end
+
+--------------------------------------------------------------------------------
+-- the ship editor
+
+-- stats (ShipState_stats) as an editable ship: { initiative, computer, shield, hull,
+-- cannon = { [color] = dice }, missile = { [color] = dice }, regenerate, ... }
+function CombatSim_editOf(stats)
+  local edit = { cannon = {}, missile = {} }
+  for _, key in ipairs(CombatSim_EDIT_STATS) do edit[key] = stats[key] or 0 end
+  for _, key in ipairs(CombatSim_SPECIALS) do edit[key] = stats[key] == true end
+  for _, die in ipairs(CombatSim_DICE) do
+    edit.cannon[die.color], edit.missile[die.color] = 0, 0
+  end
+  for kind, list in pairs({ cannon = stats.cannons, missile = stats.missiles }) do
+    for _, die in ipairs(list or {}) do
+      local color = die.rift and "pink" or die.color
+      if edit[kind][color] ~= nil then edit[kind][color] = edit[kind][color] + (die.count or 1) end
+    end
+  end
+  return edit
+end
+
+-- an editable ship as text, to tell whether the game's ship has changed
+function CombatSim_editKey(edit)
+  local parts = {}
+  for _, key in ipairs(CombatSim_EDIT_STATS) do table.insert(parts, tostring(edit[key])) end
+  for _, key in ipairs(CombatSim_SPECIALS) do table.insert(parts, tostring(edit[key])) end
+  for _, die in ipairs(CombatSim_DICE) do
+    table.insert(parts, edit.cannon[die.color] .. "/" .. edit.missile[die.color])
+  end
+  return table.concat(parts, ",")
+end
+
+-- called when the panel opens: an edit made from a ship design that has changed in the
+-- game since (an upgrade, say) is dropped, and so is a switched Antimatter Splitter when
+-- the player has gained or lost the tech
+function CombatSim_dropStaleEdits()
+  for _, side in ipairs(CombatSim_SIDES) do
+    for ship, edit in pairs(CombatSim_edits[side]) do
+      local stats = CombatSim_gameStats(side, ship)
+      if stats == nil or CombatSim_editKey(CombatSim_editOf(stats)) ~= edit.base then
+        CombatSim_edits[side][ship] = nil
+      end
+    end
+    if CombatSim_splitter[side] ~= nil and CombatSim_gameSplitter(side) == CombatSim_splitter[side] then
+      CombatSim_splitter[side] = nil
+    end
+  end
+end
+
+-- an edited ship as stats, in the shape of ShipState_stats
+function CombatSim_statsOfEdit(edit)
+  local stats = { cannons = {}, missiles = {}, edited = true }
+  for _, key in ipairs(CombatSim_EDIT_STATS) do stats[key] = edit[key] end
+  for _, key in ipairs(CombatSim_SPECIALS) do stats[key] = edit[key] end
+  for _, die in ipairs(CombatSim_DICE) do
+    for kind, list in pairs({ cannon = stats.cannons, missile = stats.missiles }) do
+      local count = edit[kind][die.color] or 0
+      if count > 0 then
+        table.insert(list, { color = die.color, count = count, damage = die.damage, rift = die.rift })
+      end
+    end
+  end
+  return stats
+end
+
+-- onClick of a ship row's Edit button: "interceptor" (your ships) or "opp_interceptor".
+-- The same ship again closes the editor.
+function CombatSim_edit(player, value)
+  local side, ship = "you", value
+  local oppShip = string.match(value or "", "^opp_(%a+)$")
+  if oppShip ~= nil then side, ship = "opp", oppShip end
+  local editing = CombatSim_editing
+  if editing ~= nil and editing.side == side and editing.ship == ship then
+    CombatSim_editing = nil
+  elseif CombatSim_gameStats(side, ship) ~= nil then
+    CombatSim_editing = { side = side, ship = ship }
+  end
+  CombatSim_updateUI()
+end
+
+function CombatSim_editClose(player)
+  CombatSim_editing = nil
+  CombatSim_updateUI()
+end
+
+-- the edited ship in the editor, made from the game's on the first change
+local function CombatSim_editTarget()
+  local editing = CombatSim_editing
+  if editing == nil then return nil end
+  local edit = CombatSim_edits[editing.side][editing.ship]
+  if edit == nil then
+    local stats = CombatSim_gameStats(editing.side, editing.ship)
+    if stats == nil then return nil end
+    edit = CombatSim_editOf(stats)
+    edit.base = CombatSim_editKey(edit)  -- the game's ship it was made from
+    CombatSim_edits[editing.side][editing.ship] = edit
+  end
+  return edit
+end
+
+-- onClick of the editor's -/+ buttons: "initiative" ... "hull", "cannon_yellow", "missile_red"
+function CombatSim_editPlus(player, value) CombatSim_editChange(value, 1) end
+function CombatSim_editMinus(player, value) CombatSim_editChange(value, -1) end
+
+function CombatSim_editChange(value, delta)
+  local edit = CombatSim_editTarget()
+  if edit == nil then return end
+  local kind, color = string.match(value or "", "^(%a+)_(%a+)$")
+  local tbl, key = edit, value
+  if kind ~= nil then tbl, key = edit[kind], color end
+  if tbl == nil or type(tbl[key]) ~= "number" then return end
+  tbl[key] = math.max(0, math.min(CombatSim_EDIT_MAX, tbl[key] + delta))
+  CombatSim_updateUI()
+end
+
+-- onClick of a special part: "regenerate" (Morph Shield)
+function CombatSim_editToggle(player, value)
+  local edit = CombatSim_editTarget()
+  if edit == nil or type(edit[value]) ~= "boolean" then return end
+  edit[value] = not edit[value]
+  CombatSim_updateUI()
+end
+
+-- onClick of Antimatter Splitter: for all ships of the side in the editor
+function CombatSim_editSplitter(player)
+  local editing = CombatSim_editing
+  if editing == nil then return end
+  local side = editing.side
+  local value = not CombatSim_hasSplitter(side)
+  if value == CombatSim_gameSplitter(side) then value = nil end
+  CombatSim_splitter[side] = value
+  CombatSim_updateUI()
+end
+
+function CombatSim_editReset(player)
+  local editing = CombatSim_editing
+  if editing ~= nil then CombatSim_edits[editing.side][editing.ship] = nil end
+  CombatSim_updateUI()
+end
+
+-- the editor and the Edit buttons; called by CombatSim_updateUI
+function CombatSim_updateEditor()
+  local editing = CombatSim_editing
+  if editing ~= nil and (CombatSim_sideColor(editing.side) == nil or
+                         CombatSim_gameStats(editing.side, editing.ship) == nil) then
+    editing = nil
+    CombatSim_editing = nil
+  end
+
+  for _, side in ipairs(CombatSim_SIDES) do
+    local prefix = side == "you" and "CombatSim_" or "CombatSim_opp_"
+    for _, entry in ipairs(CombatSim_SHIPS) do
+      local open = editing ~= nil and editing.side == side and editing.ship == entry.ship
+      local color = (open and "#9fd59f") or (CombatSim_edits[side][entry.ship] and "#ffd34d") or "#d0d0d0"
+      UI.setAttribute(prefix .. entry.ship .. "_Edit", "color", color)
+      UI.setAttribute(prefix .. entry.ship .. "_Edit", "interactable",
+        CombatSim_gameStats(side, entry.ship) and "true" or "false")
+    end
+  end
+
+  if editing == nil then
+    UI.setAttribute("CombatSim_Editor", "active", "false")
+    return
+  end
+  local edited = CombatSim_edits[editing.side][editing.ship]
+  local edit = edited or CombatSim_editOf(CombatSim_gameStats(editing.side, editing.ship))
+  local name = ""
+  for _, entry in ipairs(CombatSim_SHIPS) do
+    if entry.ship == editing.ship then name = string.gsub(CombatSim_label(editing.side, entry), "s$", "") end
+  end
+  local color = CombatSim_sideColor(editing.side)
+  UI.setValue("CombatSim_Edit_Title", string.format("<color=%s>%s</color>'s %s",
+    CombatSim_colorHex(color), ATO_name(color), name))
+  UI.setValue("CombatSim_Edit_Status", edited and "<color=#ffd34d>Edited</color> for the simulation"
+    or "As in the game")
+  for _, key in ipairs(CombatSim_EDIT_STATS) do UI.setValue("CombatSim_Edit_" .. key, tostring(edit[key])) end
+  for _, die in ipairs(CombatSim_DICE) do
+    UI.setValue("CombatSim_Edit_cannon_" .. die.color, tostring(edit.cannon[die.color]))
+    if not die.rift then UI.setValue("CombatSim_Edit_missile_" .. die.color, tostring(edit.missile[die.color])) end
+  end
+  for _, key in ipairs(CombatSim_SPECIALS) do
+    UI.setAttribute("CombatSim_Edit_" .. key, "color", edit[key] and "#9fd59f" or "#d0d0d0")
+  end
+  local splitter = CombatSim_hasSplitter(editing.side)
+  UI.setAttribute("CombatSim_Edit_splitter", "color", splitter and "#9fd59f" or "#d0d0d0")
+  UI.setValue("CombatSim_Edit_splitterNote", CombatSim_splitter[editing.side] ~= nil
+    and "<color=#ffd34d>Edited</color>" or "As in the game")
+  UI.setAttribute("CombatSim_Editor", "active", "true")
 end
 
 -- the Exiles have Orbitals in place of Starbases
@@ -291,7 +543,18 @@ function CombatSim_statLine(stats)
   if stats.computer > 0 then table.insert(parts, "+" .. stats.computer .. " comp") end
   if stats.shield > 0 then table.insert(parts, "shield " .. stats.shield) end
   table.insert(parts, "hull " .. stats.hull)
-  return table.concat(parts, ", ")
+  if stats.regenerate then table.insert(parts, "Morph Shield") end
+  -- the splitter only matters to ships with antimatter cannons
+  local antimatter = false
+  for _, die in ipairs(stats.cannons or {}) do
+    if die.color == "red" and not die.rift then antimatter = true end
+  end
+  if antimatter and stats.splitter then
+    table.insert(parts, stats.splitterEdited and "<color=#ffd34d>Splitter</color>" or "Splitter")
+  end
+  local line = table.concat(parts, ", ")
+  if stats.edited then line = "<color=#ffd34d>Edited:</color> " .. line end
+  return line
 end
 
 -- a player color as "#rrggbb", for UI text
@@ -342,6 +605,7 @@ function CombatSim_updateUI()
   if CombatSim_job == nil then
     UI.setValue("CombatSim_Result", CombatSim_lastResult or "Set your ships and pick an opponent.")
   end
+  CombatSim_updateEditor()
 end
 
 --------------------------------------------------------------------------------
@@ -398,6 +662,9 @@ function CombatSim_template(stats, side, ship, size, npc)
     hp = stats.hull + 1,
     cannons = cannons, missiles = CombatSim_dice(stats.missiles), rift = rift,
     regenerate = stats.regenerate == true,
+    -- Antimatter Splitter: cannon hits of 4 damage (antimatter, the only dice that deal
+    -- 4) are split into 1 damage hits
+    split = stats.splitter == true,
     escapes = not npc and ship ~= "starbase" and #cannons == 0 and rift == 0,
   }
 end
@@ -558,6 +825,7 @@ local function CombatSim_volley(E, missiles)
       local enemy = group.enemy
       local enemies = E.ships[enemy]
       local computer = tpl.computer
+      local split = not missiles and tpl.split
       -- a roll that misses the weakest shield on the other side misses every ship
       local minShield = E.minShield[enemy]
       local members = group.members
@@ -569,8 +837,16 @@ local function CombatSim_volley(E, missiles)
           for d = 1, count do
             local r = random(6)
             if r == 6 or (r ~= 1 and r + computer - minShield >= 6) then
-              n = n + 1
-              dmg[n], roll[n] = dice[d], r
+              local damage = dice[d]
+              if split and damage == 4 then
+                for _ = 1, 4 do
+                  n = n + 1
+                  dmg[n], roll[n] = 1, r
+                end
+              else
+                n = n + 1
+                dmg[n], roll[n] = damage, r
+              end
             end
           end
           local selfN = 0
