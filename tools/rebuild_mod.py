@@ -7,11 +7,12 @@ Everything we change in it is reproducible from the repository:
   3. player board snap points are put into the canonical order  (tools/normalize_board_snaps.py)
 
 Usage (run from the repository root):
-    python tools/rebuild_mod.py                       rebuild ./2348417296.json
+    python tools/rebuild_mod.py                       rebuild ./3844682665.json
     python tools/rebuild_mod.py --mod "<save>.json"   rebuild another mod or save file
 
-Any copy of the mod works as the starting point, including the plain Steam Workshop download
-of 2348417296.json (Workshop ID of the original mod); the result is the same.
+Our mod is Workshop item 3844682665. Any copy of the mod works as the starting point,
+including the plain Steam Workshop download of the original mod (item 2348417296) copied to
+3844682665.json; the result is the same.
 """
 import argparse
 import os
@@ -19,9 +20,9 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_MOD = os.path.join(ROOT, '2348417296.json')
+DEFAULT_MOD = os.path.join(ROOT, '3844682665.json')
 WORKSHOP_HINT = """No mod file at {path}.
-Copy the Workshop download of the original mod there first, for example from
+Copy the Workshop download of the original mod there first (as 3844682665.json), from
   macOS:   ~/Library/Tabletop Simulator/Mods/Workshop/2348417296.json
   Windows: Documents\\My Games\\Tabletop Simulator\\Mods\\Workshop\\2348417296.json
 (subscribe to Workshop item 2348417296 in Steam if it isn't there), then run this again."""

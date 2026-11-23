@@ -35,7 +35,7 @@ import sys
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_MOD = os.path.join(ROOT, '2348417296.json')
+DEFAULT_MOD = os.path.join(ROOT, '3844682665.json')
 DEFAULT_OUT = os.path.join(ROOT, 'board-maps')
 
 

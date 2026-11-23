@@ -30,7 +30,7 @@ import sys
 from json.decoder import scanstring
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_MOD = os.path.join(ROOT, '2348417296.json')
+DEFAULT_MOD = os.path.join(ROOT, '3844682665.json')
 DEFAULT_DIR = os.path.join(ROOT, 'scripts')
 
 FIELDS = {'LuaScript': '.lua', 'XmlUI': '.xml'}

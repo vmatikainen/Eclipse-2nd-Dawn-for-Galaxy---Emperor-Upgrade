@@ -1,7 +1,8 @@
 # Eclipse: Second Dawn for the Galaxy – Emperor Upgrade
 
 A modified version of the Tabletop Simulator Workshop mod
-*Eclipse: Second Dawn for the Galaxy [Scripted]* (Workshop ID `2348417296`).
+*Eclipse: Second Dawn for the Galaxy [Scripted]* (Workshop ID `2348417296`), published as
+*Eclipse: Second Dawn for the Galaxy - Emperor Edition* (Workshop ID `3844682665`).
 It adds turn order options, including the **Pass order** house rule (see below).
 
 ## Repository layout
@@ -18,7 +19,7 @@ It adds turn order options, including the **Pass order** house rule (see below).
 | `tools/annotate_boards.py` | Draws each player board's snap points, numbered, into `board-maps/index.html`. |
 | `.claude/skills/` | Project skills for Claude Code, e.g. `pull-main`. |
 
-**The mod file `2348417296.json` is not in git.** It holds every object on the table with
+**The mod file `3844682665.json` is not in git.** It holds every object on the table with
 all scripts as one-line strings, which makes diffs unusable. Each developer keeps a local
 copy and rebuilds it from the repository. Everything we change in it is reproducible:
 
@@ -40,7 +41,7 @@ Python 3, with no extra packages. Run the commands from the repository root.
 ### First time: get a mod file
 
 Copy the Workshop download of the original mod (subscribe to Workshop item `2348417296` in
-Steam) into the repository root as `2348417296.json`. TTS keeps it in:
+Steam) into the repository root as `3844682665.json`. TTS keeps it in:
 
 - macOS: `~/Library/Tabletop Simulator/Mods/Workshop/2348417296.json`
 - Windows: `Documents\My Games\Tabletop Simulator\Mods\Workshop\2348417296.json`
@@ -48,7 +49,7 @@ Steam) into the repository root as `2348417296.json`. TTS keeps it in:
 Then rebuild it:
 
 ```
-python tools/rebuild_mod.py                      # rebuild ./2348417296.json
+python tools/rebuild_mod.py                      # rebuild ./3844682665.json
 python tools/rebuild_mod.py --mod "<save>.json"  # or rebuild another mod or save file
 ```
 
@@ -114,7 +115,7 @@ you made the change in the game, compare your save with a rebuilt mod to see wha
 
 ## Caveats
 
-- **Steam updates can overwrite the Workshop copy** of `2348417296.json` in the TTS folder.
+- **Steam updates can overwrite the Workshop copy** of `3844682665.json` in the TTS folder.
   Run `python tools/rebuild_mod.py` on it again, or copy your rebuilt file back.
 - Don't edit scripts directly inside the mod file. The next rebuild replaces any script
   whose file differs.

@@ -15,10 +15,12 @@ Fixes:
   reputation-bag-random  The Reputation Tiles bag draws in random order (Bag.Order = 2). It was
                          last in, first out, so a just-returned tile was drawn next.
   setup-background       The setup popup's background (UI asset "SetupOptions") is our
-                         assets/emperor_background.jpg: SETUP_BACKGROUND_URL once it is uploaded,
-                         until then the image in the repository as a local file:/// URL to this
-                         computer's copy of the repository. Without the image, the asset is left
-                         out and the popup is black.
+                         assets/emperor_background.jpg, uploaded to Steam Cloud
+                         (SETUP_BACKGROUND_URL). Without a URL it would be the image in the
+                         repository as a local file:/// URL, and without the image the asset is
+                         left out and the popup is black.
+  mod-name               The mod's name (SaveName, shown in TTS) is our Workshop item's,
+                         MOD_NAME, not the original mod's.
 
 Only the values these rules touch change; the rest of the mod file stays byte-for-byte identical.
 """
@@ -34,8 +36,10 @@ from annotate_boards import DEFAULT_MOD  # noqa: E402
 SECTOR_BAGS = {'Sector I Tiles', 'Sector II Tiles', 'Sector III Tiles', 'Galactic Events', 'Guardian Sectors'}
 REPUTATION_BAG_GUID = '3c5d08'
 RANDOM_ORDER = 2
+MOD_NAME = 'Eclipse: Second Dawn for the Galaxy - Emperor Edition'
 SETUP_ASSET = 'SetupOptions'
-SETUP_BACKGROUND_URL = None  # the uploaded image's Steam Cloud URL, once there is one
+# assets/emperor_background.jpg uploaded to Steam Cloud
+SETUP_BACKGROUND_URL = 'https://steamusercontent-a.akamaihd.net/ugc/17730115518711650371/396A6357EFB949BD4B7E235C5EF67F18C167491B/'
 SETUP_BACKGROUND_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                      'assets', 'emperor_background.jpg')
 
@@ -116,6 +120,20 @@ def setup_background(mod):
     return [('ui-assets', want)]
 
 
+def mod_name(mod):
+    if mod.get('SaveName') == MOD_NAME:
+        return []
+    return [('save-name', MOD_NAME)]
+
+
+def set_save_name(raw, name):
+    """Replace the top-level "SaveName" string (the first key of that name); return the new raw text."""
+    key = '"SaveName": '
+    start = raw.index(key) + len(key)
+    _, end = json.JSONDecoder().raw_decode(raw, start)
+    return raw[:start] + json.dumps(name, ensure_ascii=False) + raw[end:]
+
+
 def set_ui_assets(raw, assets):
     """Replace the CustomUIAssets list; return the new raw text."""
     key = '"CustomUIAssets": '
@@ -130,11 +148,13 @@ def set_ui_assets(raw, assets):
 def apply_edit(raw, edit):
     if edit[0] == 'ui-assets':
         return set_ui_assets(raw, edit[1])
+    if edit[0] == 'save-name':
+        return set_save_name(raw, edit[1])
     return set_number(raw, *edit)
 
 
 FIXES = [('sector-tiles-aligned', sector_tiles_aligned), ('reputation-bag-random', reputation_bag_random),
-         ('setup-background', setup_background)]
+         ('setup-background', setup_background), ('mod-name', mod_name)]
 
 
 def main():

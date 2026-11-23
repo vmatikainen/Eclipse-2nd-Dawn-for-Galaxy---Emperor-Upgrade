@@ -1,11 +1,11 @@
 ---
 name: pull-main
-description: Pull the latest main from GitHub and rebuild the local mod JSON (2348417296.json is not in git, so every pull from main must be followed by a rebuild). Use whenever pulling, syncing or updating from main, merging main into a branch, or after switching to an updated main.
+description: Pull the latest main from GitHub and rebuild the local mod JSON (3844682665.json is not in git, so every pull from main must be followed by a rebuild). Use whenever pulling, syncing or updating from main, merging main into a branch, or after switching to an updated main.
 ---
 
 # Pull main and rebuild the mod JSON
 
-The mod file `2348417296.json` is git-ignored. Each developer has a local copy, and it has to
+The mod file `3844682665.json` is git-ignored. Each developer has a local copy, and it has to
 be rebuilt from the repository after every pull from `main`. Otherwise Tabletop Simulator
 keeps loading old scripts and old board snap points. Follow these steps in order.
 
@@ -33,7 +33,7 @@ player board snap points.
 - If the user keeps the mod somewhere else, e.g. a TTS save they work in, pass
   `--mod "<path>.json"`.
 - If it reports that the mod file is missing, relay its instructions. The user copies the
-  Workshop download of item 2348417296 into the repository root, then runs the rebuild again.
+  Workshop download of the original item 2348417296 into the repository root as `3844682665.json`, then runs the rebuild again.
 - If the rebuild fails, show the error and stop.
 
 ## 4. Report
