@@ -109,6 +109,7 @@ settings = {
   NoRoundLimit = false,
   TechAfterRaces = false,     -- draw the starting techs after race selection, not at Setup
   CombatSim = true,           -- the Combat Sim button on the player boards (nil in older saves: on)
+  AutoScore = true,           -- house rule "Auto calculate points" (nil in older saves: on, see Score_enabled)
 
   TurnOrder = "rotating",     -- "rotating" or "pass" (see TURN ORDER)
   StartingPlayer = "yellow",  -- "yellow", "random" or "draft" (draft: pass order only)
@@ -128,6 +129,7 @@ function printSettings()
   printToAll(string.format(" - Round Limit: %s", tostring(not settings.NoRoundLimit)))
   printToAll(string.format(" - Tech setup after faction selection: %s", tostring(settings.TechAfterRaces == true)))
   printToAll(string.format(" - Combat Simulator: %s", tostring(CombatSim_enabled())))
+  printToAll(string.format(" - Auto calculate points: %s", tostring(Score_enabled())))
   printToAll(string.format(" - Turn order: %s", ATO_passOrder() and "pass order" or "rotating"))
   printToAll(string.format(" - Starting player: %s", ATO_startMode()))
   printToAll(string.format(" - Random factions: %s", tostring(settings.RandomRaces == true)))
@@ -217,6 +219,7 @@ function SetupUI_OnChange(player, checked, elementId)
   end
   SEAT_updateSetupUI()
   if elementId == "CombatSim" then CombatSim_applySetting() end
+  if elementId == "AutoScore" or elementId == "NoRoundLimit" then Score_applySetting() end
 
   updateGameStateBasedOnSettings()
 end
@@ -256,6 +259,7 @@ function updateSetupUI()
   else UI.setAttribute("NoRoundLimit", "isOn", false) end
   UI.setAttribute("TechAfterRaces", "isOn", settings.TechAfterRaces == true)
   UI.setAttribute("CombatSim", "isOn", CombatSim_enabled())
+  UI.setAttribute("AutoScore", "isOn", Score_enabled())
 
   for i = 2, 6 do UI.setAttribute(i .. 'Players', 'isOn', settings.PlayerCount == i) end
   SEAT_updateSetupUI()
@@ -345,19 +349,13 @@ function onLoad(saveData)
       TechTrack_reconcile()
       CombatSim_restore()
     end, 1)
-    addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
-    addContextMenuItem("Show NPC ships", function(player_color) ShipState_npcReport(player_color) end)
-    addContextMenuItem("Show combats", function(player_color) HexState_report(player_color) end)
+    setTableMenu()
 
     updateGameStateBasedOnSettings()
     shuffleEverything()
 
     setVisibility(BehindTheScenes_GUIDs, DebugMode)
     setInteractivity(DebugMode)
-    if (DebugMode) then
-      addContextMenuItem("Toggle Visibility", toggleVisibility)
-      addContextMenuItem("Toggle Interactivity", toggleInteractivity)
-    end
 
     -- hide stuff under the table unless we are in debug mode
     for _,GUID in pairs(BehindTheScenes_GUIDs) do
@@ -377,6 +375,30 @@ function onLoad(saveData)
     ATO_resume()
     -- hot seat players at a color without a player area move to a free one
     HotseatColors_restore()
+end
+
+-- the table's right-click menu. Rebuilt when a setting it depends on changes
+-- (Score_applySetting: Auto calculate points, No Round Limit)
+function setTableMenu()
+  if clearContextMenu ~= nil then
+    clearContextMenu()
+  elseif tableMenuSet then
+    return   -- can't remove items, so don't add them twice
+  end
+  tableMenuSet = true
+  addContextMenuItem("Show my ships", function(player_color) ShipState_report(player_color) end)
+  addContextMenuItem("Show NPC ships", function(player_color) ShipState_npcReport(player_color) end)
+  addContextMenuItem("Show combats", function(player_color) HexState_report(player_color) end)
+  if Score_enabled() then
+    addContextMenuItem("Show scores", function(player_color) Score_report(player_color) end)
+    if settings.NoRoundLimit then
+      addContextMenuItem("Final scoring", function(player_color) Score_finalMenu(player_color) end)
+    end
+  end
+  if (DebugMode) then
+    addContextMenuItem("Toggle Visibility", toggleVisibility)
+    addContextMenuItem("Toggle Interactivity", toggleInteractivity)
+  end
 end
 
 function onPlayerChangeColor(player_color)
@@ -640,6 +662,7 @@ function nextRound(parameters)
 
   if (round>8) and not(settings.NoRoundLimit) then
     broadcastToAll("-- Game Over --")
+    Score_finalReport()   -- house rule "Auto calculate points" (does nothing when it's off)
     return
   end
 
@@ -1331,8 +1354,7 @@ function spawnResourceMarker(type, boardPos, amount, offsetY)
   local Inv= -1
   if position.z < 0 then Inv=1 end
 
-  local OffsetX = -6.9*Inv + amount*0.91*Inv
-  local OffsetZ = 3.45*Inv
+  local OffsetX, OffsetZ = Score_resourceOffset(amount, Inv)
 
   local marker = getObjectFromGUID(ResourceTemplate_GUID)
   local newMarker = marker.clone()
@@ -1357,18 +1379,6 @@ function spawnResourceMarker(type, boardPos, amount, offsetY)
   end
 
   newMarker.setLock(false)
-
-  if amount>15 and amount<24 then
-    if amount==16 or amount==23 then
-      OffsetX = -7.18*Inv + 16*0.91*Inv
-    else OffsetX = -7*Inv + 16*0.91*Inv end
-    OffsetZ = 3*Inv - (amount-16) *0.86*Inv
-  end
-
-  if amount>23 then
-    OffsetX= 6.75*Inv - ((amount-24)*0.91*Inv)
-    OffsetZ=-3.4*Inv
-  end
 
   newMarker.setPosition(position + Vector(OffsetX, offsetY, OffsetZ))
 end
@@ -3149,3 +3159,9 @@ end
 -- Hot seat players at a color without a player area move to a free one (scripts/include/HotseatColors.ttslua)
 --------------------------------------------------------------------------------
 #include HotseatColors
+
+--------------------------------------------------------------------------------
+-- Victory points, house rule "Auto calculate points" (scripts/include/ScoreData.ttslua, Score.ttslua)
+--------------------------------------------------------------------------------
+#include ScoreData
+#include Score

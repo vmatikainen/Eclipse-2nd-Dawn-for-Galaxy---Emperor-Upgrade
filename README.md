@@ -253,6 +253,29 @@ winning, losing and drawing, and how many of each ship survive on average when w
   own ships with rift weapons: it destroys the largest ship it can, else hits the largest.
 - Not simulated: retreating (other than missile boats).
 
+## Victory points
+
+The **Auto calculate points** house rule in the setup popup counts each player's victory
+points. It's on by default. Untick it to play without any of the following.
+
+- **Show scores** (right-click the table) lists every player's public points and where they
+  come from. Only you see the list. The values of Reputation tiles stay hidden.
+- **Final scoring:** at the end of the game, pressing *Next Round* after round 8 shows
+  everyone the ranking with all points, Reputation tiles included. With *No Round Limit*,
+  right-click the table → *Final scoring*, and choose it again to confirm. Ties go to the
+  player with the most Materials + Science + Money in storage.
+- **Traitor:** each player area has a spot for the Traitor tile, marked *Traitor*, beside
+  the Start Player tile's spot. Put the Traitor there when you take it (−2 VP, except for Rho Indi).
+- **Discovery tiles** kept for points lie VP side up (face down) in your area: they count
+  for the player whose board is nearest. Tiles still on a sector don't count. Artifact Codex
+  and Ancient Might are kept front up in your area. The Ancient Warp Portal lies front up
+  in its sector.
+- Sectors count for the player whose influence disc is on them. Reputation and ambassador
+  tiles count on your board's reputation column, and tech tiles on your tech tracks.
+- Faction bonuses are included: Draco (each Ancient on the board), Exiles (each Orbital
+  with your population cube), Planta (each sector), Magellan (each Discovery tile used as a
+  ship part), Lyra (each Shrine in your sectors) and Rho Indi (no Traitor penalty).
+
 ## Player colors and hot seat
 
 The table has seats for six player colors: **White, Red, Yellow, Blue, Green and Purple**.
