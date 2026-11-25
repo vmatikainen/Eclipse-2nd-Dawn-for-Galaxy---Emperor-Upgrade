@@ -478,6 +478,11 @@
 					id="CombatSim" onValueChanged="SetupUI_OnChange" isOn="true"
 					tooltip="A Combat Sim button on every player board: simulates battles of your ships against the NPCs or another player, and shows the odds of winning.">
 				Combat Simulator </Toggle>
+
+				<Toggle minWidth="200" preferredWidth="200" flexibleWidth="0" flexibleHeight="0"
+					id="AutoScore" onValueChanged="SetupUI_OnChange" isOn="true"
+					tooltip="Count each player's victory points: right-click the table and Show scores for the public points. After the last round, Next Round shows the final scores with the hidden Reputation tiles (with No Round Limit: right-click the table, Final scoring).">
+				Auto calculate points </Toggle>
 				</HorizontalLayout>
 		</VerticalLayout>
 

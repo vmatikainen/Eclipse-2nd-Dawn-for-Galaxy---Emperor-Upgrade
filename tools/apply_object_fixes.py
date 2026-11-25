@@ -21,6 +21,15 @@ Fixes:
                          left out and the popup is black.
   mod-name               The mod's name (SaveName, shown in TTS) is our Workshop item's,
                          MOD_NAME, not the original mod's.
+  traitor-spots          Each seat has a Traitor spot: a table snap point tagged "Traitor",
+                         beside where the Start Player tile goes (TRAITOR_OFFSET from the seat's
+                         hand, mirrored for the far side of the table). The Traitor tile is tagged
+                         "Traitor" and snaps to snap points, so it only snaps to these spots.
+                         Snap points show no text, so each spot gets a locked 3D text "Traitor"
+                         lying on the table just beyond it (TRAITOR_LABEL_GUIDS, GMNotes
+                         "TraitorLabel <Color>"), readable from that seat.
+                         Scoring (scripts/include/Score.ttslua) reads the Traitor's holder from
+                         the spot it lies on.
 
 Only the values these rules touch change; the rest of the mod file stays byte-for-byte identical.
 """
@@ -40,6 +49,17 @@ MOD_NAME = 'Eclipse: Second Dawn for the Galaxy - Emperor Edition'
 SETUP_ASSET = 'SetupOptions'
 # assets/emperor_background.jpg uploaded to Steam Cloud
 SETUP_BACKGROUND_URL = 'https://steamusercontent-a.akamaihd.net/ugc/12261681211286334942/BFC258A117E13CF40E041A5AC7A232D240491B35/'
+TRAITOR_GUID = 'faba6c'
+TRAITOR_TAG = 'Traitor'
+# from a seat's hand position, for the seats at negative z (the far side is mirrored): beside
+# the Start Player tile's spot (placeFirstPlayerTile: hand + 28 toward the table centre), to the
+# player's left. The tiles are about 5 apart.
+TRAITOR_OFFSET = (-5.6, 28.0)
+TABLE_Y = 0.96
+SEAT_COLORS = ('White', 'Red', 'Blue', 'Purple', 'Green', 'Yellow')
+TRAITOR_LABEL_GUIDS = ('b7a101', 'b7a102', 'b7a103', 'b7a104', 'b7a105', 'b7a106')  # in SEAT_COLORS order
+TRAITOR_LABEL_GAP = 3.2   # from the spot toward the table centre: beyond the tile, clear of the board
+TRAITOR_LABEL_SIZE = 48
 SETUP_BACKGROUND_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                      'assets', 'emperor_background.jpg')
 
@@ -145,7 +165,151 @@ def set_ui_assets(raw, assets):
     return raw[:start] + text + raw[end:]
 
 
+def seat_hands(mod):
+    """color -> the seat's hand zone Transform."""
+    hands = {}
+    for obj in mod['ObjectStates']:
+        if obj.get('Name') == 'HandTrigger':
+            color = (obj.get('FogColor') or '').capitalize()
+            if color in SEAT_COLORS:
+                hands[color] = obj['Transform']
+    return hands
+
+
+def traitor_points(mod):
+    """The Traitor snap points there should be, one per seat, in SEAT_COLORS order."""
+    hands = seat_hands(mod)
+    points = []
+    for color in SEAT_COLORS:
+        if color not in hands:
+            raise ValueError(f'no hand zone for {color}')
+        hand = hands[color]
+        inv = 1 if hand['posZ'] < 0 else -1
+        points.append({'Position': {'x': round(hand['posX'] + TRAITOR_OFFSET[0] * inv, 2), 'y': TABLE_Y,
+                                    'z': round(hand['posZ'] + TRAITOR_OFFSET[1] * inv, 2)},
+                       'Tags': [TRAITOR_TAG]})
+    return points
+
+
+def traitor_labels(mod):
+    """The label objects there should be, one per seat: GUID -> object (a 3D text lying flat,
+    its top toward the table centre, so the seat reads it the right way up)."""
+    labels = {}
+    for color, guid, point in zip(SEAT_COLORS, TRAITOR_LABEL_GUIDS, traitor_points(mod)):
+        inv = 1 if seat_hands(mod)[color]['posZ'] < 0 else -1
+        position = point['Position']
+        labels[guid] = {
+            'GUID': guid, 'Name': '3DText',
+            'Transform': {'posX': position['x'], 'posY': TABLE_Y + 0.02,
+                          'posZ': round(position['z'] + TRAITOR_LABEL_GAP * inv, 2),
+                          'rotX': 90.0, 'rotY': 0.0 if inv == 1 else 180.0, 'rotZ': 0.0,
+                          'scaleX': 1.0, 'scaleY': 1.0, 'scaleZ': 1.0},
+            'Nickname': '', 'Description': '', 'GMNotes': f'TraitorLabel {color}',
+            'ColorDiffuse': {'r': 1.0, 'g': 1.0, 'b': 1.0},
+            'Locked': True, 'Grid': False, 'Snap': False, 'Autoraise': True, 'Sticky': False,
+            'Tooltip': False, 'GridProjection': False, 'Hands': False,
+            'Text': {'Text': 'Traitor', 'colorstate': {'r': 0.85, 'g': 0.85, 'b': 0.85},
+                     'fontSize': TRAITOR_LABEL_SIZE},
+        }
+    return labels
+
+
+def traitor_spots(mod):
+    edits = []
+    have = {o['GUID']: o for o in mod['ObjectStates'] if o.get('GUID') in TRAITOR_LABEL_GUIDS}
+    want = traitor_labels(mod)
+    if json.dumps(have, sort_keys=True) != json.dumps(want, sort_keys=True):
+        edits.append(('traitor-labels', want))
+    have = [p for p in mod.get('SnapPoints') or [] if TRAITOR_TAG in (p.get('Tags') or [])]
+    want = traitor_points(mod)
+    if json.dumps(have, sort_keys=True) != json.dumps(want, sort_keys=True):
+        edits.append(('traitor-snaps', want))
+    traitor = next(o for o in mod['ObjectStates'] if o.get('GUID') == TRAITOR_GUID)
+    if traitor.get('Snap') is not True:
+        edits.append(('traitor-snap-flag', None))
+    if TRAITOR_TAG not in (traitor.get('Tags') or []):
+        edits.append(('traitor-tag', None))
+    return edits
+
+
+def top_level_span(raw, key):
+    """(start, end) of a top-level key's value in the raw text (keys at two spaces' indent)."""
+    match = re.search(r'^  "' + key + r'": ', raw, re.M)
+    if match is None:
+        raise ValueError(f'no top-level "{key}"')
+    _, end = json.JSONDecoder().raw_decode(raw, match.end())
+    return match.end(), end
+
+
+def set_traitor_snaps(raw, points):
+    """Keep the table's other snap points verbatim, replace the Traitor ones; return the new raw text."""
+    start, end = top_level_span(raw, 'SnapPoints')
+    texts, depth, begin = [], 0, None
+    for i in range(start, end):
+        if raw[i] == '{':
+            if depth == 0:
+                begin = i
+            depth += 1
+        elif raw[i] == '}':
+            depth -= 1
+            if depth == 0:
+                texts.append(raw[begin:i + 1])
+    kept = [t for t in texts if TRAITOR_TAG not in (json.loads(t).get('Tags') or [])]
+    new = [json.dumps(p, indent=2).replace('\n', '\n    ') for p in points]
+    elements = kept + new
+    text = '[\n    ' + ',\n    '.join(elements) + '\n  ]' if elements else '[]'
+    return raw[:start] + text + raw[end:]
+
+
+def set_traitor_flag(raw):
+    start, end = object_span(raw, TRAITOR_GUID)
+    at = raw.index('"Snap": false', start, end)
+    return raw[:at] + '"Snap": true' + raw[at + len('"Snap": false'):]
+
+
+def add_traitor_tag(raw):
+    """Add "Tags": ["Traitor"] after the Traitor's GMNotes (it has no Tags yet)."""
+    start, end = object_span(raw, TRAITOR_GUID)
+    if raw.find('"Tags": [', start, end) != -1:
+        raise ValueError(f'{TRAITOR_GUID} has Tags without "{TRAITOR_TAG}": add it by hand')
+    at = raw.index('"GMNotes": ', start, end)
+    line_start = raw.rfind('\n', 0, at) + 1
+    indent = raw[line_start:at]
+    line_end = raw.index('\n', at)
+    tags = f'{indent}"Tags": [\n{indent}  "{TRAITOR_TAG}"\n{indent}],\n'
+    return raw[:line_end + 1] + tags + raw[line_end + 1:]
+
+
+def set_traitor_labels(raw, labels):
+    """Replace the label objects (or add them) at the end of ObjectStates; return the new raw text."""
+    start, end = top_level_span(raw, 'ObjectStates')
+    mod = json.loads(raw)
+    kept = [o for o in mod['ObjectStates'] if o.get('GUID') not in labels]
+    if len(kept) != len(mod['ObjectStates']):
+        # labels already there but different: drop their text, element by element
+        for guid in labels:
+            if any(o.get('GUID') == guid for o in mod['ObjectStates']):
+                s, _ = object_span(raw, guid)
+                begin = raw.rindex('{', start, s)
+                _, finish = json.JSONDecoder().raw_decode(raw, begin)
+                before = raw.rindex(',', start, begin)  # the comma before this element
+                raw = raw[:before] + raw[finish:]
+                start, end = top_level_span(raw, 'ObjectStates')
+    close = raw.rindex(']', start, end)
+    body = raw[:close].rstrip()
+    text = ''.join(',\n    ' + json.dumps(o, indent=2).replace('\n', '\n    ') for o in labels.values())
+    return body + text + '\n  ' + raw[close:]
+
+
 def apply_edit(raw, edit):
+    if edit[0] == 'traitor-labels':
+        return set_traitor_labels(raw, edit[1])
+    if edit[0] == 'traitor-snaps':
+        return set_traitor_snaps(raw, edit[1])
+    if edit[0] == 'traitor-snap-flag':
+        return set_traitor_flag(raw)
+    if edit[0] == 'traitor-tag':
+        return add_traitor_tag(raw)
     if edit[0] == 'ui-assets':
         return set_ui_assets(raw, edit[1])
     if edit[0] == 'save-name':
@@ -154,7 +318,7 @@ def apply_edit(raw, edit):
 
 
 FIXES = [('sector-tiles-aligned', sector_tiles_aligned), ('reputation-bag-random', reputation_bag_random),
-         ('setup-background', setup_background), ('mod-name', mod_name)]
+         ('setup-background', setup_background), ('mod-name', mod_name), ('traitor-spots', traitor_spots)]
 
 
 def main():

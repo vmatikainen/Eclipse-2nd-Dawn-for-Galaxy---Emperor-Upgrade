@@ -123,8 +123,9 @@ local function objectKey(obj)
   return (HexState_keyAt(obj.getPosition()))
 end
 
--- one pass over the table: hexes[key] = { q, r, tile, tiles, number, units = { [side] = { obj, ... } } }
--- (tiles: every hex tile on that hex, normally just tile; number: tile's sector number)
+-- one pass over the table: hexes[key] = { q, r, tile, tiles, number, owner, units = { [side] = { obj, ... } } }
+-- (tiles: every hex tile on that hex, normally just tile; number: tile's sector number;
+-- owner: the color of the influence disc on it, or nil)
 -- exclude = GUID of an object to leave out (one being destroyed)
 local function scan(exclude)
   local hexes = {}
@@ -165,6 +166,9 @@ local function scan(exclude)
       hex.units[unit.side] = hex.units[unit.side] or {}
       table.insert(hex.units[unit.side], unit.obj)
     end
+  end
+  for key, color in pairs(discs) do
+    if hexes[key] ~= nil then hexes[key].owner = color end
   end
   return hexes
 end
@@ -404,6 +408,30 @@ function HexState_contested()
     if hex.contested then table.insert(result, hex) end
   end
   return result
+end
+
+-- every hex with a sector tile, units or not: { key, q, r, tile, tiles, number, owner, units },
+-- in no particular order. owner = the color whose influence disc is on it (nil: nobody).
+-- It doesn't reconcile the arrival order: a read-only look at the table (for scoring).
+function HexState_sectors()
+  local result = {}
+  for key, hex in pairs(scan()) do
+    hex.key = key
+    table.insert(result, hex)
+  end
+  return result
+end
+
+-- who holds a hex: the color of the influence disc on it, or nil. where = a hex from
+-- HexState_sectors / HexState_all, a key "q,r" or a table position.
+function HexState_owner(where)
+  if type(where) == "table" and where.key ~= nil and where.units ~= nil then
+    if where.owner ~= nil or where.tiles ~= nil then return where.owner end
+    where = where.key
+  end
+  local key = (type(where) == "string") and where or HexState_keyAt(where)
+  local hex = scan()[key]
+  return hex and hex.owner
 end
 
 --------------------------------------------------------------------------------

@@ -1,0 +1,98 @@
+--------------------------------------------------------------------------------
+-- Score data: what each scoring item is worth, read from the tiles, boards and rules
+-- reference in the mod. Used by Score.ttslua. Pyxis Unity isn't listed (deprecated).
+--------------------------------------------------------------------------------
+
+-- VP printed on each sector tile (the shield by the sector number) and its artifacts (the
+-- star on the shield's corner; the sparkles on planet squares mark advanced squares, not
+-- artifacts). Keyed by the sector number in the tile's Description (HexState_sectorNumber).
+SECTOR_VP = {
+  -- Galactic Center
+  [1]   = { vp = 4, artifacts = 1 },
+  -- Sector I
+  [101] = { vp = 2, artifacts = 0 }, [102] = { vp = 2, artifacts = 0 }, [103] = { vp = 2, artifacts = 0 },
+  [104] = { vp = 2, artifacts = 0 }, [105] = { vp = 2, artifacts = 0 }, [106] = { vp = 2, artifacts = 0 },
+  [107] = { vp = 3, artifacts = 1 }, [108] = { vp = 2, artifacts = 0 }, [109] = { vp = 4, artifacts = 1 },
+  [110] = { vp = 2, artifacts = 0 },
+  -- Sector II
+  [201] = { vp = 1, artifacts = 0 }, [202] = { vp = 2, artifacts = 1 }, [203] = { vp = 2, artifacts = 0 },
+  [204] = { vp = 2, artifacts = 1 }, [205] = { vp = 1, artifacts = 1 }, [206] = { vp = 1, artifacts = 0 },
+  [207] = { vp = 2, artifacts = 0 }, [208] = { vp = 2, artifacts = 0 }, [209] = { vp = 1, artifacts = 0 },
+  [210] = { vp = 1, artifacts = 0 }, [211] = { vp = 1, artifacts = 0 }, [214] = { vp = 2, artifacts = 0 },
+  [281] = { vp = 2, artifacts = 0 },
+  -- Homeworlds (Rho Indi's has no VP; 238 is Lyra's, whose Description has no number)
+  [221] = { vp = 3, artifacts = 1 }, [222] = { vp = 3, artifacts = 1 }, [223] = { vp = 3, artifacts = 1 },
+  [224] = { vp = 3, artifacts = 1 }, [225] = { vp = 3, artifacts = 1 }, [226] = { vp = 3, artifacts = 1 },
+  [227] = { vp = 3, artifacts = 1 }, [228] = { vp = 3, artifacts = 1 }, [229] = { vp = 3, artifacts = 1 },
+  [230] = { vp = 3, artifacts = 1 }, [231] = { vp = 3, artifacts = 1 }, [232] = { vp = 3, artifacts = 1 },
+  [233] = { vp = 3, artifacts = 1 }, [234] = { vp = 3, artifacts = 1 }, [236] = { vp = 0, artifacts = 1 },
+  [238] = { vp = 3, artifacts = 1 },
+  -- Guardian sectors
+  [271] = { vp = 2, artifacts = 1 }, [272] = { vp = 2, artifacts = 1 },
+  [273] = { vp = 2, artifacts = 1 }, [274] = { vp = 2, artifacts = 1 },
+  -- Sector III
+  [301] = { vp = 2, artifacts = 1 }, [302] = { vp = 2, artifacts = 1 }, [303] = { vp = 2, artifacts = 1 },
+  [304] = { vp = 2, artifacts = 0 }, [305] = { vp = 1, artifacts = 0 }, [306] = { vp = 1, artifacts = 0 },
+  [307] = { vp = 2, artifacts = 0 }, [308] = { vp = 2, artifacts = 0 }, [309] = { vp = 2, artifacts = 0 },
+  [310] = { vp = 1, artifacts = 0 }, [311] = { vp = 1, artifacts = 0 }, [312] = { vp = 1, artifacts = 0 },
+  [313] = { vp = 1, artifacts = 0 }, [314] = { vp = 1, artifacts = 0 }, [315] = { vp = 1, artifacts = 0 },
+  [316] = { vp = 1, artifacts = 0 }, [317] = { vp = 2, artifacts = 0 }, [318] = { vp = 1, artifacts = 0 },
+  [381] = { vp = 1, artifacts = 0 }, [382] = { vp = 1, artifacts = 0 },
+  -- Galactic Events: nebulas (295, 395), black holes (396, 399) and supernovas (397, 398)
+  -- print no VP; 393 and 394 have the normal shield
+  [295] = { vp = 0, artifacts = 0 },
+  [393] = { vp = 1, artifacts = 0 }, [394] = { vp = 1, artifacts = 0 }, [395] = { vp = 0, artifacts = 0 },
+  [396] = { vp = 0, artifacts = 0 }, [397] = { vp = 0, artifacts = 0 }, [398] = { vp = 0, artifacts = 0 },
+  [399] = { vp = 0, artifacts = 0 },
+}
+
+-- sector tiles whose Description has no number: Description -> sector number printed on the tile
+SECTOR_NUMBER_BY_DESCRIPTION = {
+  ["Enlightened of Lyra"] = 238,
+}
+
+-- Discovery tiles that aren't ship parts (DISCOVERY_PARTS has those), by texture. Every
+-- Discovery tile has the same back, worth 2 VP when kept (DISCOVERY_KEPT_VP): that is the side
+-- face down in TTS (rotation x 180). Types that score with their front up:
+--   artifact_codex     1 VP per artifact in the sectors the holder controls
+--   ancient_might      1 VP per 3 VP of the holder's Reputation tiles (hidden)
+--   ancient_warp_portal  placed in a sector: 2 VP to the player who controls it
+DISCOVERY_KEPT_VP = 2
+DISCOVERY_TILES = {
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135697858/DB4B52C012F98475AC1A7AB4849ADFCAFE0CF4CD/"] = { type = "artifact_codex", name = "Artifact Codex" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135697113/3C75151C051D12B596AE4079D2D6FDDF9013D060/"] = { type = "ancient_might", name = "Ancient Might" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135685055/1489EE707D8BBCC2D0AD7C92EF68D06665840779/"] = { type = "ancient_warp_portal", name = "Ancient Warp Portal", vp = 2 },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135680508/719940EAB8CBA0E17396BB0D2A7E20334A33A699/"] = { type = "ancient_monolith", name = "Ancient Monolith" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135686331/0C0E8E893CB7C2A2BF670118F403EF32B6FD7576/"] = { type = "ancient_orbital", name = "Ancient Orbital, 2 Materials" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135688912/92D303220662A25E17D6476B36AADBC03636AA7A/"] = { type = "ancient_cruiser", name = "Ancient Cruiser" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135676714/96525708FE45355D71DE2062796DD0B81C2C709F/"] = { type = "ancient_tech", name = "Ancient Tech" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135681168/C95D1DC4CA02EAC7ADFB0B7932DFC1AD812E4D6A/"] = { type = "resources", name = "8 Money" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135679290/8BE2D94FDABF3E9EC2381843F6ADA819CF9A8768/"] = { type = "resources", name = "5 Science" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135677432/3025A64EB8895ADBFE60E69820C0B758077DBE63/"] = { type = "resources", name = "6 Materials" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135681888/7C376038D8E16F00CEA5328E04BD4501955EF7D5/"] = { type = "resources", name = "2 Materials, 2 Science, 3 Money" },
+  ["https://steamusercontent-a.akamaihd.net/ugc/1267149075135695717/0C521E7595C7B2C3922DF36B7511A9C99CBD1FDF/"] = { type = "resources", name = "3 Any, 3 Money" },
+}
+
+-- Reputation tiles are all named "Reputation": the value is in the texture (12 / 10 / 7 / 4 copies)
+REPUTATION_VALUES = {
+  ["https://steamusercontent-a.akamaihd.net/ugc/2435957270665695016/30F0F66F203D99A30174D1A884D6B61AF7A74CD8/"] = 1,
+  ["https://steamusercontent-a.akamaihd.net/ugc/2435957270666865543/BDF61B071189D2E7D32C2BD16FE9BB7868EDF601/"] = 2,
+  ["https://steamusercontent-a.akamaihd.net/ugc/2435957270666851781/76B6D3651E59E7F82E81591D4F728E8162DCEDBD/"] = 3,
+  ["https://steamusercontent-a.akamaihd.net/ugc/2435957270666860515/9C6D8979856C1A7142BCCA40B3C44725EDD46A4E/"] = 4,
+}
+
+-- techs on one track -> VP, as printed on every board's tech tracks (and the rules reference)
+TECH_TRACK_VP = { [4] = 1, [5] = 2, [6] = 3, [7] = 5 }
+
+-- Minor Species ambassadors ("Minor Ambassador - <name>"), from their descriptions: 1 VP each,
+-- except these. "per_ambassador": 1 VP per Ambassador tile on the board (itself included);
+-- "per_reputation": 1 VP per Reputation tile on the board.
+MINOR_AMBASSADOR_VP = {
+  Wealth = 3,
+  Diplomacy = "per_ambassador",
+  Reputation = "per_reputation",
+}
+
+SCORE_TRAITOR_VP = -2
+SCORE_MONOLITH_VP = 3
+SCORE_WARP_PORTAL_VP = 1   -- the Warp Portal tile of the rare tech

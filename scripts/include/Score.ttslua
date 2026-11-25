@@ -1,0 +1,672 @@
+--------------------------------------------------------------------------------
+-- Score: each player's victory points, and where they come from.
+--
+-- House rule "Auto calculate points" (settings.AutoScore, on by default, nil in older saves
+-- = on, read with Score_enabled()). Off means no scoring at all: every function here that
+-- reads the table returns nil, so no path (menu item, Next Round, an object's Global.call)
+-- gets points. It can't stop the host, who can run any Lua.
+--
+--   Score_public(color) -> { total, lines = { { source, label, points, detail }, ... } }
+--   Score_final()       -> { { color, faction, total, public, hidden, resources, place, lines }, ... }
+--
+-- Public points can be shown any time. Hidden points (the values of the Reputation tiles,
+-- and Ancient Might, which counts them) are only added by Score_final, at the end of the game.
+-- Everything is computed from the table when asked (one pass over the objects); nothing is
+-- saved. Data (sector VP, Discovery tiles, Reputation values) is in ScoreData.ttslua.
+--
+-- Ownership:
+--   a sector: the color of the influence disc on it (HexState_owner)
+--   on a player board: the board's owner (PlayerState). Reputation column = snap points
+--     68-72, blueprint slots 7-33, tech tracks 47-67, Magellan's Discovery spot 73
+--   the Traitor: the seat whose Traitor spot (a table snap point tagged "Traitor", added by
+--     tools/apply_object_fixes.py) it lies on
+--   a Discovery tile anywhere else: the player whose board is nearest. Tiles on a sector
+--     tile aren't anyone's (populateSector puts unclaimed ones there face down), nor is the
+--     unresolved one on Magellan's Discovery spot, nor tiles used as ship parts.
+--
+-- Rules, from the faction sheets and the rules reference (they differ from issue 14 in places):
+--   hexes           VP printed on each sector held
+--   ambassadors     1 VP per Ambassador tile on the reputation column; Minor Species:
+--                   MINOR_AMBASSADOR_VP (Wealth 3, Diplomacy 1 per Ambassador tile, itself
+--                   included, Reputation 1 per Reputation tile), the others 1
+--   discoveries     2 VP per Discovery tile kept with its VP side up (face down in TTS)
+--   techs           per track, TECH_TRACK_VP (4 techs 1, 5 2, 6 3, 7 5); tiles locked on the
+--                   track and start techs printed on it; rare techs on the track they're on
+--   exiles_orbitals Exiles: 1 VP per Orbital with an Exiles Population cube on it
+--   monoliths       3 VP per Monolith on a sector held
+--   draco_ancients  Draco: 1 VP per Ancient ship on the board (any sector)
+--   planta_hexes    Planta: 1 VP per sector held
+--   magellan_discoveries  Magellan: 1 VP per Discovery tile on a blueprint slot
+--   traitor         -2 VP for the Traitor's holder; Rho Indi loses nothing
+--   artifacts       Artifact Codex (Discovery, front up, held): 1 VP per artifact on sectors held
+--   ancient_warp_portal  Ancient Warp Portal (Discovery, front up, on a sector): 2 VP to its holder
+--   warp_portal     the Warp Portal tile (rare tech) on a sector: 1 VP to its holder
+--   lyra_shrines    Lyra: 1 VP per Shrine on a sector Lyra holds
+--   hidden: reputation  the values of the Reputation tiles on the reputation column
+--   hidden: ancient_might  Ancient Might (Discovery, front up, held): 1 VP per 3 Reputation VP
+--
+-- Ranking: highest total first. Ties: most Materials + Science + Money in storage (the
+-- resource markers on the control board's track, read back from their positions). A tie
+-- that's still a tie shares the place.
+--------------------------------------------------------------------------------
+
+local SCORE_DRACO = "Descendants of Draco"
+local SCORE_EXILES = "The Exiles"
+local SCORE_PLANTA = "Planta"
+local SCORE_MAGELLAN = "Wardens of Magellan"
+local SCORE_LYRA = "Enlightened of Lyra"
+local SCORE_RHO_INDI = "Rho Indi Syndicate"
+
+local SCORE_TRAITOR_GUID = "faba6c"
+local SCORE_SHRINE_TEMPLATE_GUID = "a1d6db"
+local SCORE_REPUTATION_SNAPS = { first = 68, last = 72 }
+local SCORE_DISCOVERY_SNAP = 73
+local SCORE_BOARD_SNAP_RADIUS = 0.15   -- board-local units; reputation spots are about 0.3 apart
+local SCORE_TRAITOR_RADIUS = 2         -- table units, from a Traitor spot
+local SCORE_CUBE_RADIUS = 0.9          -- table units: a Population cube on an Orbital tile
+local SCORE_RESOURCES = { "Materials", "Science", "Money" }
+local SCORE_TRACK_LAST = 39            -- the storage track runs 0..39 around the control board
+
+-- display order and labels; hidden = only in Score_final
+local SCORE_SOURCES = {
+  { key = "hexes",                label = "Sectors" },
+  { key = "planta_hexes",         label = "Planta sectors" },
+  { key = "artifacts",            label = "Artifact Codex" },
+  { key = "monoliths",            label = "Monoliths" },
+  { key = "ancient_warp_portal",  label = "Ancient Warp Portal" },
+  { key = "warp_portal",          label = "Warp Portal" },
+  { key = "exiles_orbitals",      label = "Orbitals" },
+  { key = "lyra_shrines",         label = "Shrines" },
+  { key = "draco_ancients",       label = "Ancients" },
+  { key = "techs",                label = "Techs" },
+  { key = "ambassadors",          label = "Ambassadors" },
+  { key = "discoveries",          label = "Discovery tiles" },
+  { key = "magellan_discoveries", label = "Discovery parts" },
+  { key = "traitor",              label = "Traitor" },
+  { key = "reputation",           label = "Reputation",    hidden = true },
+  { key = "ancient_might",        label = "Ancient Might", hidden = true },
+}
+
+function Score_enabled()
+  return settings.AutoScore ~= false
+end
+
+-- the setting was switched in the setup popup (or No Round Limit was): the table's menu
+-- items depend on both
+function Score_applySetting()
+  setTableMenu()
+end
+
+--------------------------------------------------------------------------------
+-- reading the table
+
+local function scoreDistance2(a, b)
+  local dx, dz = a.x - b.x, a.z - b.z
+  return dx * dx + dz * dz
+end
+
+-- the snap point number (first..last) of a board an object lies on, or nil
+local function boardSnapAt(board, position, first, last)
+  local here = board.positionToLocal(position)
+  local snaps = board.getSnapPoints()
+  for index = first, last do
+    local snap = snaps[index]
+    if snap ~= nil and scoreDistance2(here, snap.position) <= SCORE_BOARD_SNAP_RADIUS * SCORE_BOARD_SNAP_RADIUS then
+      return index
+    end
+  end
+  return nil
+end
+
+local function texture(obj)
+  local custom = obj.getCustomObject()
+  return custom and custom.diffuse
+end
+
+local function sameColor(obj, color)
+  local tint, c = obj.getColorTint(), Color.fromString(color)
+  return math.abs(c.r - tint.r) + math.abs(c.g - tint.g) + math.abs(c.b - tint.b) < 0.1
+end
+
+-- a Discovery tile's VP side (its back) is up: face down in TTS
+local function vpSideUp(obj)
+  return obj.getTransformUp().y < 0
+end
+
+-- the sector number printed on a hex's tile (the Lyra Homeworld's Description has none)
+local function sectorNumber(hex)
+  if hex.number ~= nil then return hex.number end
+  return SECTOR_NUMBER_BY_DESCRIPTION[HexState_baseDescription(hex.tile)]
+end
+
+-- who sits at a table position's seat: the seat color whose hand is nearest
+local function seatAt(position)
+  local best, bestD = nil, nil
+  for _, color in ipairs(Player.getAvailableColors()) do
+    local hand = Player[color].getHandTransform()
+    if hand ~= nil then
+      local d = scoreDistance2(hand.position, position)
+      if bestD == nil or d < bestD then best, bestD = color, d end
+    end
+  end
+  return best
+end
+
+-- one pass over the table: everything the scoring rules look at
+local function snapshot()
+  local snap = {
+    hexes = {}, byKey = {}, boards = {},
+    discoveries = {}, reputation = {}, ambassadors = {}, monoliths = {}, warpPortals = {},
+    orbitals = {}, cubes = {}, shrines = {}, markers = {}, controlBoards = {}, traitor = nil,
+  }
+  for _, hex in ipairs(HexState_sectors()) do
+    table.insert(snap.hexes, hex)
+    snap.byKey[hex.key] = hex
+  end
+  for color, _ in pairs(PlayerState) do
+    local board = PlayerState_board(color)
+    if board ~= nil then snap.boards[color] = board end
+  end
+  for _, obj in ipairs(getAllObjects()) do
+    if obj ~= nil and not obj.isDestroyed() and obj.type ~= "Bag" and obj.type ~= "Infinite"
+       and obj.type ~= "Deck" then
+      local name = obj.getName()
+      if name == "Discovery" then table.insert(snap.discoveries, obj)
+      elseif name == "Reputation" then table.insert(snap.reputation, obj)
+      elseif obj.hasTag("Ambassador") then table.insert(snap.ambassadors, obj)
+      elseif name == "Monolith" then table.insert(snap.monoliths, obj)
+      elseif name == "Warp Portal" then table.insert(snap.warpPortals, obj)
+      elseif name == "Orbital" then table.insert(snap.orbitals, obj)
+      elseif name == "Population" then table.insert(snap.cubes, obj)
+      elseif name == "Shrine" and obj.getGUID() ~= SCORE_SHRINE_TEMPLATE_GUID then table.insert(snap.shrines, obj)
+      elseif name == "Control Board" then table.insert(snap.controlBoards, obj)
+      elseif name == "Materials" or name == "Science" or name == "Money" then table.insert(snap.markers, obj)
+      elseif obj.getGUID() == SCORE_TRAITOR_GUID or name == "Traitor" then snap.traitor = obj
+      end
+    end
+  end
+  return snap
+end
+
+-- the sector an object lies on (a hex with a sector tile), or nil
+local function sectorUnder(snap, obj)
+  return snap.byKey[(HexState_keyAt(obj.getPosition()))]
+end
+
+-- the color whose board is nearest to an object
+local function nearestBoardOwner(snap, obj)
+  local position = obj.getPosition()
+  local best, bestD = nil, nil
+  for color, board in pairs(snap.boards) do
+    local d = scoreDistance2(board.getPosition(), position)
+    if bestD == nil or d < bestD then best, bestD = color, d end
+  end
+  return best
+end
+
+-- the color a Discovery tile lying in a player area belongs to, or nil: not on a sector, not
+-- on Magellan's Discovery spot, not used as a ship part
+local function discoveryOwner(snap, obj)
+  if sectorUnder(snap, obj) ~= nil then return nil end
+  if ShipState_tiles[obj.getGUID()] ~= nil then return nil end
+  for _, board in pairs(snap.boards) do
+    if boardSnapAt(board, obj.getPosition(), SCORE_DISCOVERY_SNAP, SCORE_DISCOVERY_SNAP) ~= nil then return nil end
+  end
+  return nearestBoardOwner(snap, obj)
+end
+
+local function discoveryType(obj)
+  local entry = DISCOVERY_TILES[texture(obj) or ""]
+  return entry and entry.type
+end
+
+-- the seat holding the Traitor, or nil: the seat of the Traitor spot it lies on
+local function traitorSeat(snap)
+  local tile = snap.traitor
+  if tile == nil or tile.held_by_color ~= nil then return nil end
+  local position = tile.getPosition()
+  for _, point in ipairs(Global.getSnapPoints() or {}) do
+    local tagged = false
+    for _, tag in ipairs(point.tags or {}) do
+      if tag == "Traitor" then tagged = true end
+    end
+    if tagged and scoreDistance2(point.position, position) <= SCORE_TRAITOR_RADIUS * SCORE_TRAITOR_RADIUS then
+      return seatAt(point.position)
+    end
+  end
+  return nil
+end
+
+--------------------------------------------------------------------------------
+-- resources in storage (the tie breaker)
+
+-- where the storage track's space for an amount is, from the control board's centre (the
+-- seats at negative z: inv = 1; the far side is mirrored, inv = -1). The track runs 0..15
+-- along the top row, 16..23 down the right side and 24..39 back along the bottom row.
+-- spawnResourceMarker places the markers with it.
+function Score_resourceOffset(amount, inv)
+  local x = -6.9 * inv + amount * 0.91 * inv
+  local z = 3.45 * inv
+  if amount > 15 and amount < 24 then
+    if amount == 16 or amount == 23 then
+      x = -7.18 * inv + 16 * 0.91 * inv
+    else
+      x = -7 * inv + 16 * 0.91 * inv
+    end
+    z = 3 * inv - (amount - 16) * 0.86 * inv
+  end
+  if amount > 23 then
+    x = 6.75 * inv - ((amount - 24) * 0.91 * inv)
+    z = -3.4 * inv
+  end
+  return x, z
+end
+
+-- the control board in a color's area (setup puts it 7 from the hand, toward the table)
+local function controlBoardOf(snap, color)
+  local hand = Player[color].getHandTransform()
+  local board = snap.boards[color]
+  local expected = nil
+  if hand ~= nil then
+    local inv = hand.position.z < 0 and 1 or -1
+    expected = hand.position + Vector(0, 0, 7 * inv)
+  elseif board ~= nil then
+    expected = board.getPosition()
+  else
+    return nil
+  end
+  local best, bestD = nil, nil
+  for _, obj in ipairs(snap.controlBoards) do
+    local d = scoreDistance2(obj.getPosition(), expected)
+    if d < 16 * 16 and (bestD == nil or d < bestD) then best, bestD = obj, d end
+  end
+  return best
+end
+
+-- the amount a marker shows: the nearest space of the track
+local function trackAmount(board, marker)
+  local center = board.getPosition()
+  local inv = center.z < 0 and 1 or -1
+  local p = marker.getPosition()
+  local best, bestD = 0, nil
+  for amount = 0, SCORE_TRACK_LAST do
+    local x, z = Score_resourceOffset(amount, inv)
+    local dx, dz = p.x - (center.x + x), p.z - (center.z + z)
+    local d = dx * dx + dz * dz
+    if bestD == nil or d < bestD then best, bestD = amount, d end
+  end
+  return best
+end
+
+-- Materials + Science + Money in a color's storage, and each of them
+local function resourcesOf(snap, color)
+  local board = controlBoardOf(snap, color)
+  local amounts = { Materials = 0, Science = 0, Money = 0 }
+  if board == nil then return 0, amounts end
+  local center = board.getPosition()
+  for _, marker in ipairs(snap.markers) do
+    local p = marker.getPosition()
+    if math.abs(p.x - center.x) < 10 and math.abs(p.z - center.z) < 6 then
+      amounts[marker.getName()] = trackAmount(board, marker)
+    end
+  end
+  return amounts.Materials + amounts.Science + amounts.Money, amounts
+end
+
+--------------------------------------------------------------------------------
+-- the rules
+
+-- every hex the color holds
+local function heldHexes(snap, color)
+  local result = {}
+  for _, hex in ipairs(snap.hexes) do
+    if hex.owner == color then table.insert(result, hex) end
+  end
+  return result
+end
+
+local function heldUnder(snap, obj, color)
+  local hex = sectorUnder(snap, obj)
+  return hex ~= nil and hex.owner == color
+end
+
+-- objects on the color's reputation column
+local function onReputationColumn(snap, color, objs)
+  local board = snap.boards[color]
+  local result = {}
+  if board == nil then return result end
+  for _, obj in ipairs(objs) do
+    if boardSnapAt(board, obj.getPosition(), SCORE_REPUTATION_SNAPS.first, SCORE_REPUTATION_SNAPS.last) ~= nil then
+      table.insert(result, obj)
+    end
+  end
+  return result
+end
+
+-- Discovery tiles with their front up of a type, held by the color (not on a sector)
+local function heldDiscoveries(snap, color, kind)
+  local count = 0
+  for _, obj in ipairs(snap.discoveries) do
+    if not vpSideUp(obj) and discoveryType(obj) == kind and discoveryOwner(snap, obj) == color then
+      count = count + 1
+    end
+  end
+  return count
+end
+
+local function plural(n, word)
+  return n .. " " .. word .. (n == 1 and "" or "s")
+end
+
+-- techs per track: locked tiles on the color's tech spaces, plus the start techs printed there
+local function techCounts(color)
+  local counts = {}
+  for _, track in ipairs(TECH_TRACKS) do counts[track.name] = 0 end
+  local printed = TECH_PRINTED[PlayerState_faction(color) or ""] or {}
+  for snapIndex, _ in pairs(printed) do
+    for _, track in ipairs(TECH_TRACKS) do
+      if snapIndex >= track.first and snapIndex < track.first + TECH_TRACK_SPACES then
+        counts[track.name] = counts[track.name] + 1
+      end
+    end
+  end
+  for _, tile in ipairs(getObjectsWithTag("TechTile")) do
+    if tile.getLock() then
+      local where = TechTrack_spaceAt(tile)
+      if where ~= nil and where.color == color then counts[where.track] = counts[where.track] + 1 end
+    end
+  end
+  return counts
+end
+
+-- the public lines of one color: source key -> { points, detail }
+local function publicSources(snap, color)
+  local faction = PlayerState_faction(color)
+  local s = {}
+  local held = heldHexes(snap, color)
+
+  -- sectors
+  local vp, numbers, artifacts = 0, {}, 0
+  table.sort(held, function(a, b) return (sectorNumber(a) or 0) > (sectorNumber(b) or 0) end)
+  for _, hex in ipairs(held) do
+    local number = sectorNumber(hex)
+    local data = number and SECTOR_VP[number]
+    if data ~= nil then
+      vp = vp + data.vp
+      artifacts = artifacts + data.artifacts
+      table.insert(numbers, string.format("%03d", number))
+    else
+      table.insert(numbers, (number and string.format("%03d", number) or hex.tile.getName()) .. "?")
+    end
+  end
+  s.hexes = { points = vp, detail = table.concat(numbers, ", ") }
+  if faction == SCORE_PLANTA then s.planta_hexes = { points = #held, detail = plural(#held, "sector") } end
+
+  -- Artifact Codex
+  if heldDiscoveries(snap, color, "artifact_codex") > 0 then
+    s.artifacts = { points = artifacts, detail = plural(artifacts, "artifact") }
+  end
+
+  -- things on held sectors
+  local monoliths = 0
+  for _, obj in ipairs(snap.monoliths) do
+    if heldUnder(snap, obj, color) then monoliths = monoliths + 1 end
+  end
+  s.monoliths = { points = monoliths * SCORE_MONOLITH_VP, detail = plural(monoliths, "Monolith") }
+
+  local portals = 0
+  for _, obj in ipairs(snap.discoveries) do
+    if not vpSideUp(obj) and discoveryType(obj) == "ancient_warp_portal" and heldUnder(snap, obj, color) then
+      portals = portals + 1
+    end
+  end
+  local entry = nil
+  for _, data in pairs(DISCOVERY_TILES) do
+    if data.type == "ancient_warp_portal" then entry = data end
+  end
+  s.ancient_warp_portal = { points = portals * (entry and entry.vp or 2), detail = "" }
+
+  local warp = 0
+  for _, obj in ipairs(snap.warpPortals) do
+    if obj.type == "Tile" and heldUnder(snap, obj, color) then warp = warp + 1 end
+  end
+  s.warp_portal = { points = warp * SCORE_WARP_PORTAL_VP, detail = "" }
+
+  if faction == SCORE_EXILES then
+    local orbitals = 0
+    for _, orbital in ipairs(snap.orbitals) do
+      if orbital.type == "Tile" then
+        local p = orbital.getPosition()
+        for _, cube in ipairs(snap.cubes) do
+          if sameColor(cube, color) and scoreDistance2(cube.getPosition(), p) <= SCORE_CUBE_RADIUS * SCORE_CUBE_RADIUS then
+            orbitals = orbitals + 1
+            break
+          end
+        end
+      end
+    end
+    s.exiles_orbitals = { points = orbitals, detail = plural(orbitals, "Orbital") }
+  end
+
+  if faction == SCORE_LYRA then
+    local shrines = 0
+    for _, obj in ipairs(snap.shrines) do
+      if heldUnder(snap, obj, color) then shrines = shrines + 1 end
+    end
+    s.lyra_shrines = { points = shrines, detail = plural(shrines, "Shrine") }
+  end
+
+  if faction == SCORE_DRACO then
+    local ancients = 0
+    for _, hex in ipairs(snap.hexes) do ancients = ancients + #(hex.units.Ancient or {}) end
+    s.draco_ancients = { points = ancients, detail = plural(ancients, "Ancient") .. " on the board" }
+  end
+
+  -- tech tracks
+  local counts, techVp, pieces = techCounts(color), 0, {}
+  for _, track in ipairs(TECH_TRACKS) do
+    local n = counts[track.name]
+    local points = TECH_TRACK_VP[math.min(n, 7)] or 0
+    techVp = techVp + points
+    if points > 0 then table.insert(pieces, track.name .. " " .. n) end
+  end
+  s.techs = { points = techVp, detail = table.concat(pieces, ", ") }
+
+  -- ambassadors (the Reputation tiles' count is public, their values aren't)
+  local ambassadors = onReputationColumn(snap, color, snap.ambassadors)
+  local reputationCount = #onReputationColumn(snap, color, snap.reputation)
+  local ambVp, players, minors = 0, 0, {}
+  for _, obj in ipairs(ambassadors) do
+    local minor = string.match(obj.getName(), "^Minor Ambassador %- (.+)$")
+    if minor == nil then
+      players = players + 1
+      ambVp = ambVp + 1
+    else
+      local rule = MINOR_AMBASSADOR_VP[minor]
+      local points = 1
+      if rule == "per_ambassador" then points = #ambassadors
+      elseif rule == "per_reputation" then points = reputationCount
+      elseif type(rule) == "number" then points = rule end
+      ambVp = ambVp + points
+      table.insert(minors, minor .. " " .. points)
+    end
+  end
+  local detail = {}
+  if players > 0 then table.insert(detail, plural(players, "player")) end
+  for _, text in ipairs(minors) do table.insert(detail, text) end
+  s.ambassadors = { points = ambVp, detail = table.concat(detail, ", ") }
+
+  -- Discovery tiles kept for VP
+  local kept = 0
+  for _, obj in ipairs(snap.discoveries) do
+    if vpSideUp(obj) and discoveryOwner(snap, obj) == color then kept = kept + 1 end
+  end
+  s.discoveries = { points = kept * DISCOVERY_KEPT_VP, detail = plural(kept, "tile") }
+
+  if faction == SCORE_MAGELLAN then
+    local parts = 0
+    for guid, where in pairs(ShipState_tiles) do
+      local obj = getObjectFromGUID(guid)
+      if where.color == color and obj ~= nil and obj.getName() == "Discovery" then parts = parts + 1 end
+    end
+    s.magellan_discoveries = { points = parts, detail = plural(parts, "tile") }
+  end
+
+  -- the Traitor
+  if traitorSeat(snap) == color then
+    if faction == SCORE_RHO_INDI then
+      s.traitor = { points = 0, detail = "Rho Indi lose nothing", show = true }
+    else
+      s.traitor = { points = SCORE_TRAITOR_VP, detail = "" }
+    end
+  end
+  return s
+end
+
+-- the hidden lines: Reputation tile values, and Ancient Might
+local function hiddenSources(snap, color)
+  local s = {}
+  local value, count, unknown = 0, 0, 0
+  for _, obj in ipairs(onReputationColumn(snap, color, snap.reputation)) do
+    local v = REPUTATION_VALUES[texture(obj) or ""]
+    if v ~= nil then value = value + v else unknown = unknown + 1 end
+    count = count + 1
+  end
+  local detail = plural(count, "tile")
+  if unknown > 0 then detail = detail .. ", " .. unknown .. " unknown" end
+  s.reputation = { points = value, detail = detail }
+  if heldDiscoveries(snap, color, "ancient_might") > 0 then
+    s.ancient_might = { points = math.floor(value / 3), detail = value .. " Reputation VP" }
+  end
+  return s
+end
+
+-- sources -> { total, lines } in display order (lines with no points left out)
+local function toLines(sources, withHidden)
+  local total, lines = 0, {}
+  for _, source in ipairs(SCORE_SOURCES) do
+    local entry = sources[source.key]
+    if entry ~= nil and (withHidden or not source.hidden) and (entry.points ~= 0 or entry.show) then
+      total = total + entry.points
+      table.insert(lines, { source = source.key, label = source.label, points = entry.points,
+                            detail = entry.detail, hidden = source.hidden or nil })
+    end
+  end
+  return total, lines
+end
+
+--------------------------------------------------------------------------------
+-- API
+
+-- public points of a color, any time: { total, lines = { { source, label, points, detail } } }
+-- nil while the house rule is off, or for a color without a faction
+function Score_public(color)
+  if not Score_enabled() or PlayerState_faction(color) == nil then return nil end
+  local total, lines = toLines(publicSources(snapshot(), color), false)
+  return { total = total, lines = lines }
+end
+
+-- end of the game: every player with a faction, public + hidden points, ranked.
+-- { { color, faction, total, public, hidden, resources, place, lines }, ... }; nil when off
+function Score_final()
+  if not Score_enabled() then return nil end
+  local snap = snapshot()
+  local result = {}
+  for color, _ in pairs(PlayerState) do
+    local faction = PlayerState_faction(color)
+    if faction ~= nil then
+      local sources = publicSources(snap, color)
+      local public = toLines(sources, false)
+      for key, entry in pairs(hiddenSources(snap, color)) do sources[key] = entry end
+      local total, lines = toLines(sources, true)
+      local resources = resourcesOf(snap, color)
+      table.insert(result, { color = color, faction = faction, total = total, public = public,
+                             hidden = total - public, resources = resources, lines = lines })
+    end
+  end
+  table.sort(result, function(a, b)
+    if a.total ~= b.total then return a.total > b.total end
+    if a.resources ~= b.resources then return a.resources > b.resources end
+    return a.color < b.color
+  end)
+  for i, entry in ipairs(result) do
+    local before = result[i - 1]
+    if before ~= nil and before.total == entry.total and before.resources == entry.resources then
+      entry.place = before.place
+    else
+      entry.place = i
+    end
+  end
+  return result
+end
+
+--------------------------------------------------------------------------------
+-- chat reports (plain lists for now; a scorecard UI comes later)
+
+local function playerLabel(color)
+  local name = ATO_isHotseat() and color or ATO_name(color)
+  return "[" .. Color.fromString(color):toHex(false) .. "]" .. name .. "[-]"
+end
+
+-- "Sectors 7 (203, 105) · Techs 1 (Grid 4) · Traitor -2"
+local function breakdown(lines)
+  local pieces = {}
+  for _, line in ipairs(lines) do
+    local text = line.label .. " " .. line.points
+    if line.detail ~= nil and line.detail ~= "" then text = text .. " (" .. line.detail .. ")" end
+    table.insert(pieces, text)
+  end
+  return #pieces > 0 and table.concat(pieces, " · ") or "no points yet"
+end
+
+-- the "Show scores" menu item: every player's public points, to the player who asked
+function Score_report(requester)
+  if not Score_enabled() then return end
+  local rows = {}
+  for color, _ in pairs(PlayerState) do
+    local score = Score_public(color)
+    if score ~= nil then table.insert(rows, { color = color, score = score }) end
+  end
+  if #rows == 0 then
+    printToColor("No factions yet.", requester, {0.7, 0.9, 1})
+    return
+  end
+  table.sort(rows, function(a, b)
+    if a.score.total ~= b.score.total then return a.score.total > b.score.total end
+    return a.color < b.color
+  end)
+  printToColor("Public points (Reputation tiles not included):", requester, {1, 0.8, 0.4})
+  for _, row in ipairs(rows) do
+    printToColor(string.format("%s (%s): %d VP - %s", playerLabel(row.color), PlayerState_faction(row.color),
+                               row.score.total, breakdown(row.score.lines)), requester, {1, 1, 1})
+  end
+end
+
+-- final scoring, to everyone: the ranking with each player's breakdown, Reputation included
+function Score_finalReport()
+  local result = Score_final()
+  if result == nil or #result == 0 then return end
+  printToAll("Final scores:", {1, 0.8, 0.4})
+  for _, entry in ipairs(result) do
+    printToAll(string.format("%d. %s (%s): %d VP (%d public + %d hidden), %d resources", entry.place,
+                             playerLabel(entry.color), entry.faction, entry.total, entry.public,
+                             entry.hidden, entry.resources), {1, 1, 1})
+    printToAll("    " .. breakdown(entry.lines), {0.8, 0.8, 0.8})
+  end
+end
+
+-- the "Final scoring" menu item (games without the round limit): it reveals the hidden
+-- points to everyone, so a first click only asks to click again
+local finalAsked = {}   -- color -> time of the first click
+function Score_finalMenu(color)
+  if not Score_enabled() then return end
+  local now = os.time()
+  if finalAsked[color] ~= nil and now - finalAsked[color] <= 10 then
+    finalAsked = {}
+    Score_finalReport()
+    return
+  end
+  finalAsked[color] = now
+  broadcastToColor("Final scoring shows everyone's hidden points. Choose Final scoring again to confirm.",
+                   color, {1, 0.8, 0.4})
+end

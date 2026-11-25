@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1380" width="1500" height="1380">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 2040" width="1500" height="2040">
 <rect width="100%" height="100%" fill="#222"/>
-<text x="20" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#fff">Ancient technology: Discovery tiles that are ship parts (18)</text>
+<text x="20" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#fff">Discovery tiles: 18 ship parts, 12 others (every back: 2 VP when kept)</text>
 <svg x="40" y="70" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135692138/5ED91AD625B7BA35312E29F5C9644D610EA4E637/" x="0" y="0" width="2" height="2"/></svg>
 <text x="150" y="318" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Antimatter Missile</text>
 <text x="150" y="342" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 red missile (4 dmg)</text>
@@ -56,4 +56,43 @@
 <svg x="640" y="1060" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135689701/CE7ADC6E5AE4C5A019D6B0F83402DADF0E83DBB1/" x="0" y="0" width="2" height="2"/></svg>
 <text x="750" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Soliton Missile</text>
 <text x="750" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">1 blue missile (3 dmg) · init +1</text>
+<svg x="940" y="1060" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135688912/92D303220662A25E17D6476B36AADBC03636AA7A/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ancient Cruiser</text>
+<text x="1050" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">places a Cruiser</text>
+<svg x="1240" y="1060" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135697113/3C75151C051D12B596AE4079D2D6FDDF9013D060/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1350" y="1308" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ancient Might</text>
+<text x="1350" y="1332" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">kept front up: 1 VP per 3 VP of</text>
+<text x="1350" y="1352" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">your Reputation tiles</text>
+<svg x="40" y="1390" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135680508/719940EAB8CBA0E17396BB0D2A7E20334A33A699/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ancient Monolith</text>
+<text x="150" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">places a Monolith</text>
+<svg x="340" y="1390" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135686331/0C0E8E893CB7C2A2BF670118F403EF32B6FD7576/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ancient Orbital, 2 Materials</text>
+<text x="450" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">places an Orbital</text>
+<svg x="640" y="1390" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135676714/96525708FE45355D71DE2062796DD0B81C2C709F/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ancient Tech</text>
+<text x="750" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">cheapest tech for free</text>
+<svg x="940" y="1390" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135685055/1489EE707D8BBCC2D0AD7C92EF68D06665840779/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Ancient Warp Portal</text>
+<text x="1050" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">placed in its sector: 2 VP to the</text>
+<text x="1050" y="1682" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">sector&#x27;s holder</text>
+<svg x="1240" y="1390" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135697858/DB4B52C012F98475AC1A7AB4849ADFCAFE0CF4CD/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1350" y="1638" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">Artifact Codex</text>
+<text x="1350" y="1662" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">kept front up: 1 VP per artifact</text>
+<text x="1350" y="1682" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">in your sectors</text>
+<svg x="40" y="1720" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135681888/7C376038D8E16F00CEA5328E04BD4501955EF7D5/" x="0" y="0" width="2" height="2"/></svg>
+<text x="150" y="1968" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">2 Materials, 2 Science, 3 Money</text>
+<text x="150" y="1992" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">resources</text>
+<svg x="340" y="1720" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135695717/0C521E7595C7B2C3922DF36B7511A9C99CBD1FDF/" x="0" y="0" width="2" height="2"/></svg>
+<text x="450" y="1968" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">3 Any, 3 Money</text>
+<text x="450" y="1992" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">resources</text>
+<svg x="640" y="1720" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135679290/8BE2D94FDABF3E9EC2381843F6ADA819CF9A8768/" x="0" y="0" width="2" height="2"/></svg>
+<text x="750" y="1968" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">5 Science</text>
+<text x="750" y="1992" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">resources</text>
+<svg x="940" y="1720" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135677432/3025A64EB8895ADBFE60E69820C0B758077DBE63/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1050" y="1968" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">6 Materials</text>
+<text x="1050" y="1992" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">resources</text>
+<svg x="1240" y="1720" width="220" height="220" viewBox="0 0 1 1"><image href="https://steamusercontent-a.akamaihd.net/ugc/1267149075135681168/C95D1DC4CA02EAC7ADFB0B7932DFC1AD812E4D6A/" x="0" y="0" width="2" height="2"/></svg>
+<text x="1350" y="1968" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffeb3b" text-anchor="middle">8 Money</text>
+<text x="1350" y="1992" font-family="Arial, sans-serif" font-size="16" fill="#ddd" text-anchor="middle">resources</text>
 </svg>
