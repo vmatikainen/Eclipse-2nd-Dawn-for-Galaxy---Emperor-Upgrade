@@ -68,6 +68,8 @@ memory. Rule books are in the mod as `Rulebook` PDFs.
 | `tools/normalize_board_snaps.py` | Puts every player board's snap points into the canonical order (see "Snap point convention"). `--check` exits 1 if a board isn't normalized. Edits only the boards' snap point arrays. |
 | `tools/annotate_boards.py` | Draws every player board's snap points, numbered and coloured by tag, on its image → `board-maps/`. Re-run after changing board snap points. |
 | `.claude/skills/pull-main/` | Project skill: pull `main`, then rebuild the local mod JSON. |
+| `tools/tts_live.py` | Talks to a running TTS (External Editor API): `push` = Save & Play of Global's script and XML from the built mod (TTS reloads its **last save**, so save first), `lua` = run Lua in Global and print its `print()` output. |
+| `.claude/skills/save-and-play/` | Project skill: push script changes into the running game with Save & Play, and probe it. Suggest it for small script iterations. |
 | `scripts/include/*.ttslua` | Include files, pulled into a script by an `#include Name` line (see "Includes"). Ship data and ship state live here. |
 | `tools/reference_sheets.py` | Draws `reference/ship-parts.svg`, `reference/ancient-tech.svg`, `reference/npc-ships.svg` and `reference/homeworlds.svg`: every ship part tile, Discovery tile, NPC ship variant and homeworld, with the stats recorded in `ShipData` (Discovery tiles that aren't ship parts, and homeworld VP: `ScoreData`). |
 | `assets/` | Source copies of images the mod uses (the setup popup background; the mod loads the copy uploaded to Steam Cloud), and the Workshop covers: `workshop_cover_square.png` is the mod's thumbnail, which `rebuild_mod.py` copies next to `3844682665.json` (TTS shows it, and uploads it as the Workshop preview); `workshop_cover.jpg` is a 16:9 version. |
@@ -83,7 +85,8 @@ rebuilds it. Starting from the plain Workshop download of the original item 2348
 - **After every pull from `main`, rebuild the local JSON.** Use the `pull-main` skill, or
   run `python tools/rebuild_mod.py`.
 - **Workflow:** edit `scripts/` → `python tools/rebuild_mod.py` → get the file into TTS and
-  load it again → commit `scripts/`.
+  load it again → commit `scripts/`. For small script changes, skip the reload: save the game
+  in TTS, then `python tools/tts_live.py push` (Save & Play, see the `save-and-play` skill).
 - **Changes to objects** (positions, bag settings, snap points, new objects) only exist in the
   JSON. To keep them, add a rule to `apply_object_fixes.py`, or write a tool that
   `rebuild_mod.py` runs (like `normalize_board_snaps.py`). Otherwise the next rebuild loses
