@@ -226,7 +226,7 @@ end
 local function sourceDescription(want)
   local text = "Drag to take a " .. want.part .. " ship part."
   if want.tile ~= nil then
-    text = want.tile.getDescription() .. "\n\n" .. text .. "\nRight-click: Remove tech tile."
+    text = TechAfford_baseDescription(want.tile) .. "\n\n" .. text .. "\nRight-click: Remove tech tile."
   end
   return text
 end
@@ -283,6 +283,7 @@ function TechTrack_reconcile()
     end
   end
   for key, want in pairs(wanted) do spawnSource(key, want) end
+  TechAfford_refresh()
 end
 
 --------------------------------------------------------------------------------

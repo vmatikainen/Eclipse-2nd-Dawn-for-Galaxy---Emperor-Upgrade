@@ -64,8 +64,6 @@ local SCORE_DISCOVERY_SNAP = 73
 local SCORE_BOARD_SNAP_RADIUS = 0.15   -- board-local units; reputation spots are about 0.3 apart
 local SCORE_TRAITOR_RADIUS = 2         -- table units, from a Traitor spot
 local SCORE_CUBE_RADIUS = 0.9          -- table units: a Population cube on an Orbital tile
-local SCORE_RESOURCES = { "Materials", "Science", "Money" }
-local SCORE_TRACK_LAST = 39            -- the storage track runs 0..39 around the control board
 
 -- display order and labels; hidden = only in Score_final
 local SCORE_SOURCES = {
@@ -238,79 +236,12 @@ local function traitorSeat(snap)
 end
 
 --------------------------------------------------------------------------------
--- resources in storage (the tie breaker)
+-- resources in storage (the tie breaker), read by Resources.ttslua
 
--- where the storage track's space for an amount is, from the control board's centre (the
--- seats at negative z: inv = 1; the far side is mirrored, inv = -1). The track runs 0..15
--- along the top row, 16..23 down the right side and 24..39 back along the bottom row.
--- spawnResourceMarker places the markers with it.
-function Score_resourceOffset(amount, inv)
-  local x = -6.9 * inv + amount * 0.91 * inv
-  local z = 3.45 * inv
-  if amount > 15 and amount < 24 then
-    if amount == 16 or amount == 23 then
-      x = -7.18 * inv + 16 * 0.91 * inv
-    else
-      x = -7 * inv + 16 * 0.91 * inv
-    end
-    z = 3 * inv - (amount - 16) * 0.86 * inv
-  end
-  if amount > 23 then
-    x = 6.75 * inv - ((amount - 24) * 0.91 * inv)
-    z = -3.4 * inv
-  end
-  return x, z
-end
-
--- the control board in a color's area (setup puts it 7 from the hand, toward the table)
-local function controlBoardOf(snap, color)
-  local hand = Player[color].getHandTransform()
-  local board = snap.boards[color]
-  local expected = nil
-  if hand ~= nil then
-    local inv = hand.position.z < 0 and 1 or -1
-    expected = hand.position + Vector(0, 0, 7 * inv)
-  elseif board ~= nil then
-    expected = board.getPosition()
-  else
-    return nil
-  end
-  local best, bestD = nil, nil
-  for _, obj in ipairs(snap.controlBoards) do
-    local d = scoreDistance2(obj.getPosition(), expected)
-    if d < 16 * 16 and (bestD == nil or d < bestD) then best, bestD = obj, d end
-  end
-  return best
-end
-
--- the amount a marker shows: the nearest space of the track
-local function trackAmount(board, marker)
-  local center = board.getPosition()
-  local inv = center.z < 0 and 1 or -1
-  local p = marker.getPosition()
-  local best, bestD = 0, nil
-  for amount = 0, SCORE_TRACK_LAST do
-    local x, z = Score_resourceOffset(amount, inv)
-    local dx, dz = p.x - (center.x + x), p.z - (center.z + z)
-    local d = dx * dx + dz * dz
-    if bestD == nil or d < bestD then best, bestD = amount, d end
-  end
-  return best
-end
-
--- Materials + Science + Money in a color's storage, and each of them
+-- Materials + Science + Money in a color's storage
 local function resourcesOf(snap, color)
-  local board = controlBoardOf(snap, color)
-  local amounts = { Materials = 0, Science = 0, Money = 0 }
-  if board == nil then return 0, amounts end
-  local center = board.getPosition()
-  for _, marker in ipairs(snap.markers) do
-    local p = marker.getPosition()
-    if math.abs(p.x - center.x) < 10 and math.abs(p.z - center.z) < 6 then
-      amounts[marker.getName()] = trackAmount(board, marker)
-    end
-  end
-  return amounts.Materials + amounts.Science + amounts.Money, amounts
+  local amounts = Resources_of(color, snap)
+  return amounts.materials + amounts.science + amounts.money
 end
 
 --------------------------------------------------------------------------------

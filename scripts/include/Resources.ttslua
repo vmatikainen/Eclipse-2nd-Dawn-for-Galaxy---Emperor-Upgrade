@@ -1,0 +1,110 @@
+--------------------------------------------------------------------------------
+-- Resources: the Money, Science and Materials in each player's storage, read back from the
+-- resource markers on the storage track of their control board.
+--
+--   Resources_of(color [, found]) -> { money, science, materials } (0 for a marker not found)
+--   Resources_trackOffset(amount, inv) -> x, z of the track space for an amount, from the
+--                                        control board's centre (spawnResourceMarker uses it)
+--
+-- `found` is optional: { controlBoards = { obj, ... }, markers = { obj, ... } } from a pass
+-- over the table the caller already made (Score's snapshot). Without it, the table is scanned.
+-- Used by Score (the tie breaker) and TechAfford (which techs a player can afford).
+--------------------------------------------------------------------------------
+
+local RESOURCES_TRACK_LAST = 39   -- the storage track runs 0..39 around the control board
+local RESOURCES_MARKERS = { Materials = "materials", Science = "science", Money = "money" }
+
+-- where the storage track's space for an amount is, from the control board's centre (the
+-- seats at negative z: inv = 1; the far side is mirrored, inv = -1). The track runs 0..15
+-- along the top row, 16..23 down the right side and 24..39 back along the bottom row.
+function Resources_trackOffset(amount, inv)
+  local x = -6.9 * inv + amount * 0.91 * inv
+  local z = 3.45 * inv
+  if amount > 15 and amount < 24 then
+    if amount == 16 or amount == 23 then
+      x = -7.18 * inv + 16 * 0.91 * inv
+    else
+      x = -7 * inv + 16 * 0.91 * inv
+    end
+    z = 3 * inv - (amount - 16) * 0.86 * inv
+  end
+  if amount > 23 then
+    x = 6.75 * inv - ((amount - 24) * 0.91 * inv)
+    z = -3.4 * inv
+  end
+  return x, z
+end
+
+-- is an object a resource marker?
+function Resources_isMarker(obj)
+  return obj ~= nil and RESOURCES_MARKERS[obj.getName()] ~= nil
+end
+
+local function resourcesDistance2(a, b)
+  local dx, dz = a.x - b.x, a.z - b.z
+  return dx * dx + dz * dz
+end
+
+-- the control boards and resource markers on the table
+local function resourcesFind()
+  local found = { controlBoards = {}, markers = {} }
+  for _, obj in ipairs(getAllObjects()) do
+    if obj ~= nil and not obj.isDestroyed() then
+      local name = obj.getName()
+      if name == "Control Board" then table.insert(found.controlBoards, obj)
+      elseif RESOURCES_MARKERS[name] ~= nil then table.insert(found.markers, obj)
+      end
+    end
+  end
+  return found
+end
+
+-- the control board in a color's area (setup puts it 7 from the hand, toward the table)
+local function resourcesControlBoard(found, color)
+  local hand = Player[color] and Player[color].getHandTransform()
+  local expected = nil
+  if hand ~= nil then
+    local inv = hand.position.z < 0 and 1 or -1
+    expected = hand.position + Vector(0, 0, 7 * inv)
+  else
+    local board = PlayerState_board(color)
+    if board == nil then return nil end
+    expected = board.getPosition()
+  end
+  local best, bestD = nil, nil
+  for _, obj in ipairs(found.controlBoards) do
+    local d = resourcesDistance2(obj.getPosition(), expected)
+    if d < 16 * 16 and (bestD == nil or d < bestD) then best, bestD = obj, d end
+  end
+  return best
+end
+
+-- the amount a marker shows: the nearest space of the track
+local function resourcesTrackAmount(board, marker)
+  local center = board.getPosition()
+  local inv = center.z < 0 and 1 or -1
+  local p = marker.getPosition()
+  local best, bestD = 0, nil
+  for amount = 0, RESOURCES_TRACK_LAST do
+    local x, z = Resources_trackOffset(amount, inv)
+    local dx, dz = p.x - (center.x + x), p.z - (center.z + z)
+    local d = dx * dx + dz * dz
+    if bestD == nil or d < bestD then best, bestD = amount, d end
+  end
+  return best
+end
+
+function Resources_of(color, found)
+  found = found or resourcesFind()
+  local amounts = { materials = 0, science = 0, money = 0 }
+  local board = resourcesControlBoard(found, color)
+  if board == nil then return amounts end
+  local center = board.getPosition()
+  for _, marker in ipairs(found.markers) do
+    local p = marker.getPosition()
+    if math.abs(p.x - center.x) < 10 and math.abs(p.z - center.z) < 6 then
+      amounts[RESOURCES_MARKERS[marker.getName()]] = resourcesTrackAmount(board, marker)
+    end
+  end
+  return amounts
+end
