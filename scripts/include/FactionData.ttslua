@@ -1,0 +1,43 @@
+--------------------------------------------------------------------------------
+-- FactionData: per-faction values printed on the player boards, kept here because the
+-- race buttons (which hold the setup data) are removed after race selection.
+--
+--   FACTION_DATA[faction] = { trade = n, tradeMoney = { give, get } }
+--     trade       the trade rate printed by the faction's name: n of one resource for 1 of
+--                 another, the same for every pair
+--     tradeMoney  an exception for trades from Money (Rho Indi: 3 Money for 2 of another)
+--
+--   FactionData_trade(color, resource) -> give, get: the rate a color trades a resource
+--                                         ("money", "science", "materials") at, nil without
+--                                         a faction
+--
+-- Read from the board images (board-maps/). Pyxis Unity is deprecated and not listed.
+--------------------------------------------------------------------------------
+
+FACTION_DATA = {
+  ["Descendants of Draco"] = { trade = 3 },
+  ["Enlightened of Lyra"]  = { trade = 3 },
+  ["Eridani Empire"]       = { trade = 3 },
+  ["Hydran Progress"]      = { trade = 3 },
+  ["Mechanema"]            = { trade = 3 },
+  ["Orion Hegemony"]       = { trade = 4 },
+  ["Planta"]               = { trade = 3 },
+  ["Rho Indi Syndicate"]   = { trade = 3, tradeMoney = { 3, 2 } },
+  ["Terran Alliance"]      = { trade = 2 },
+  ["Terran Conglomerate"]  = { trade = 2 },
+  ["Terran Directorate"]   = { trade = 2 },
+  ["Terran Federation"]    = { trade = 2 },
+  ["Terran Republic"]      = { trade = 2 },
+  ["Terran Union"]         = { trade = 2 },
+  ["The Exiles"]           = { trade = 3 },
+  ["Wardens of Magellan"]  = { trade = 3 },
+}
+
+function FactionData_trade(color, resource)
+  local data = FACTION_DATA[PlayerState_faction(color) or ""]
+  if data == nil then return nil end
+  if resource == "money" and data.tradeMoney ~= nil then
+    return data.tradeMoney[1], data.tradeMoney[2]
+  end
+  return data.trade, 1
+end

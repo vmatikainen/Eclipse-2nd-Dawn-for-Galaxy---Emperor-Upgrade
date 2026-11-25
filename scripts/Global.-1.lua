@@ -348,6 +348,7 @@ function onLoad(saveData)
       HexState_restore(savedHexes)
       TechTrack_reconcile()
       CombatSim_restore()
+      TechAfford_init()
     end, 1)
     setTableMenu()
 
@@ -1354,7 +1355,7 @@ function spawnResourceMarker(type, boardPos, amount, offsetY)
   local Inv= -1
   if position.z < 0 then Inv=1 end
 
-  local OffsetX, OffsetZ = Score_resourceOffset(amount, Inv)
+  local OffsetX, OffsetZ = Resources_trackOffset(amount, Inv)
 
   local marker = getObjectFromGUID(ResourceTemplate_GUID)
   local newMarker = marker.clone()
@@ -1530,6 +1531,7 @@ function placeTech(tech, type)
     local num = tonumber(text) - 1
     local z = 19.35 + (-1.814 * num) -- base + (offset * tiles)
     tech.setPositionSmooth(Vector(xBase[type], 3.3, z), false, false)
+    TechAfford_refreshWhenResting(tech)
 end
 
 
@@ -1546,6 +1548,7 @@ function placeRareTech(t)
     if (checkForTaggedObjects(position, 'TechTile') ==nil) then break end
   end
   t.setPositionSmooth(position+vector(0, 2, 0), false, false)
+  TechAfford_refreshWhenResting(t)
 end
 
 
@@ -1554,6 +1557,7 @@ function onObjectPickUp(player, obj)
     ShipState_onPickUp(obj)
     HexState_onPickUp(obj)
     ActionAnnounce_onPickUp(obj)
+    TechAfford_onPickUp(obj)
     if obj.tag == "Chip" and obj.getQuantity() > 1 then
         if string.find(obj.getName(), "Tech %-") != nil then
             obj.drop()
@@ -1589,17 +1593,20 @@ function onObjectDrop(player_color, obj)
     HexState_onDrop(obj)
     TechTrack_onDrop(player_color, obj)
     ActionAnnounce_onDrop(obj)
+    TechAfford_onDrop(obj)
 end
 
 function onObjectDestroy(obj)
     ShipState_onDestroy(obj)
     HexState_onDestroy(obj)
     TechTrack_onDestroy(obj)
+    TechAfford_onDestroy(obj)
 end
 
 function onObjectSpawn(obj)
     ShipState_onSpawn(obj)
     HexState_onSpawn(obj)
+    TechAfford_onSpawn(obj)
 end
 
 
@@ -2812,6 +2819,7 @@ function onObjectRotate(object, spin, flip, player_color, old_spin, old_flip)
 end
 
 function onPlayerTurn(player, previous_player)
+  TechAfford_onTurn()
   if STO_active() then
     -- testing alone: move to the player whose turn it is, as with the pass order
     if player ~= nil then ATO_syncHotseat(player.color) end
@@ -3165,3 +3173,11 @@ end
 --------------------------------------------------------------------------------
 #include ScoreData
 #include Score
+
+--------------------------------------------------------------------------------
+-- Storage, faction trade rates, and which techs each player can afford
+-- (scripts/include/Resources.ttslua, FactionData.ttslua, TechAfford.ttslua)
+--------------------------------------------------------------------------------
+#include Resources
+#include FactionData
+#include TechAfford

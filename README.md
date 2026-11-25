@@ -15,7 +15,7 @@ It adds turn order options, including the **Pass order** house rule (see below).
 | `tools/apply_object_fixes.py` | Applies our changes to objects in the mod file (e.g. sector tiles aligned in their bags). |
 | `tools/normalize_board_snaps.py` | Gives every player board's snap points the same numbering (see CLAUDE.md). `--check` reports boards that don't follow it. |
 | `scripts/include/` | Script files pulled into other scripts with `#include Name` (same format as the VS Code TTS extension). |
-| `tools/reference_sheets.py` | Draws `reference/ship-parts.svg`, `reference/ancient-tech.svg` and `reference/npc-ships.svg`: every ship part, ancient ship part and NPC ship variant, with the stats our data records. |
+| `tools/reference_sheets.py` | Draws `reference/ship-parts.svg`, `reference/ancient-tech.svg`, `reference/npc-ships.svg`, `reference/homeworlds.svg` and `reference/tech-costs.svg`: every ship part, ancient ship part, NPC ship variant, homeworld and tech tile, with the stats our data records. |
 | `tools/annotate_boards.py` | Draws each player board's snap points, numbered, into `board-maps/index.html`. |
 | `.claude/skills/` | Project skills for Claude Code, e.g. `pull-main`. |
 
@@ -275,6 +275,23 @@ points. It's on by default. Untick it to play without any of the following.
 - Faction bonuses are included: Draco (each Ancient on the board), Exiles (each Orbital
   with your population cube), Planta (each sector), Magellan (each Discovery tile used as a
   ship part), Lyra (each Shrine in your sectors) and Rho Indi (no Traitor penalty).
+
+## Techs you can afford
+
+The tech tiles on the supply board are marked for each player, and only that player sees
+their marks:
+
+- **Green frame all round:** you can buy it with the Science in your storage.
+- **Blue corners:** you can buy it if you trade Money or Materials for Science. Each trade
+  uses one resource: at 3:1, 3 Materials give 1 Science, but 2 Materials + 1 Money give
+  nothing. Trade rates are as printed by your faction's name.
+- **Have:** you already have this tech.
+
+The price takes the discount of your track into account (start techs printed on your board
+count), and a rare tech is priced on your cheapest track with room for it. Hover over a
+tile to see who can afford it, for everyone. The marks follow the resource markers on your
+storage track, so keep them up to date. In hot seat, the marks shown are those of the player whose
+turn it is.
 
 ## Player colors and hot seat
 

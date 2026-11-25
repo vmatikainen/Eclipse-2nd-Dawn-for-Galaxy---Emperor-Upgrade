@@ -1,0 +1,420 @@
+--------------------------------------------------------------------------------
+-- TechAfford: which tech tiles in the tech supply each player can buy.
+--
+-- Always on. Every tech tile lying in the supply (on the supply board, or just beside it
+-- where placeRareTech puts the overflow; unlocked and not held) gets object XML UI of its
+-- own, so the marks move with the tile:
+--   afford  a green frame all round the tile's edge: Science in storage >= price
+--   trade   blue corners only: only with trades, Science + what Money and Materials
+--           trade for (FactionData_trade; each trade uses one resource type, no mixing)
+--   The two differ in shape as well as color, for color blind players.
+--   have    a small "Have" badge at the tile's edge nearest the seat: the player already
+--           has this tech (a tile on their track, or a start tech printed on the board).
+--           Such a tech isn't priced.
+-- Online each mark has visibility = its color, so each player sees only their own and
+-- spectators (Grey) see nothing. In hot seat everyone shares one client, and TTS shows it
+-- one fixed color's elements whoever's turn it is, so there the marks have no visibility
+-- and only the turn color's (Turns.turn_color) are put on the tiles.
+-- A tile's XML is only set when it changes; a tile that leaves the supply loses it.
+--
+-- Every tech tile in the supply also gets a public tooltip below its own Description,
+-- e.g. "Can afford: Alice" / "By trading: Bob" (a level with no one is left out).
+-- TechAfford_baseDescription(tile) gives the tile's own Description. A tile that leaves
+-- the supply gets its own Description back.
+--
+-- Price: max(min, cost - TECH_DISCOUNT[n]), n = the techs already on that track of the
+-- player's board (printed start techs count). A full track (7) takes no more. A rare tech
+-- goes on any track with a free space and is priced by the cheapest of them.
+--
+-- Updated (TechAfford_refresh, batched to once per few frames) when a tech tile or a resource
+-- marker is dropped, picked up, spawned or deleted, when a tech is locked on a track
+-- (TechTrack_reconcile), when drawTech has placed new tiles, on a turn change in hot seat,
+-- and on load.
+--------------------------------------------------------------------------------
+
+-- printed on each tech tile (read from the tile images): full cost and minimum cost
+TECH_COSTS = {
+  -- Military
+  ["Neutron Bombs"]       = { cost = 2,  min = 2 },
+  ["Starbase"]            = { cost = 4,  min = 3 },
+  ["Plasma Cannon"]       = { cost = 6,  min = 4 },
+  ["Phase Shield"]        = { cost = 8,  min = 5 },
+  ["Advanced Mining"]     = { cost = 10, min = 6 },
+  ["Tachyon Source"]      = { cost = 12, min = 6 },
+  ["Gluon Computer"]      = { cost = 14, min = 7 },
+  ["Plasma Missile"]      = { cost = 16, min = 8 },
+  -- Grid
+  ["Gauss Shield"]        = { cost = 2,  min = 2 },
+  ["Fusion Source"]       = { cost = 4,  min = 3 },
+  ["Improved Hull"]       = { cost = 6,  min = 4 },
+  ["Positron Computer"]   = { cost = 8,  min = 5 },
+  ["Advanced Economy"]    = { cost = 10, min = 6 },
+  ["Tachyon Drive"]       = { cost = 12, min = 6 },
+  ["Antimatter Cannon"]   = { cost = 14, min = 7 },
+  ["Quantum Grid"]        = { cost = 16, min = 8 },
+  -- Nano
+  ["Nanorobots"]          = { cost = 2,  min = 2 },
+  ["Fusion Drive"]        = { cost = 4,  min = 3 },
+  ["Orbital"]             = { cost = 6,  min = 4 },
+  ["Advanced Robotics"]   = { cost = 8,  min = 5 },
+  ["Advanced Labs"]       = { cost = 10, min = 6 },
+  ["Monolith"]            = { cost = 12, min = 6 },
+  ["Wormhole Generator"]  = { cost = 14, min = 7 },
+  ["Artifact Key"]        = { cost = 16, min = 8 },
+  -- Rare
+  ["Absorption Shield"]   = { cost = 7,  min = 6 },
+  ["Ancient Labs"]        = { cost = 13, min = 9 },
+  ["Antimatter Splitter"] = { cost = 5,  min = 5 },
+  ["Cloaking Device"]     = { cost = 7,  min = 6 },
+  ["Conifold Field"]      = { cost = 5,  min = 5 },
+  ["Flux Missile"]        = { cost = 11, min = 8 },
+  ["Improved Logistics"]  = { cost = 7,  min = 6 },
+  ["Metasynthesis"]       = { cost = 17, min = 11 },
+  ["Neutron Absorber"]    = { cost = 5,  min = 5 },
+  ["Pico Modulator"]      = { cost = 11, min = 8 },
+  ["Rift Cannon"]         = { cost = 9,  min = 7 },
+  ["Sentient Hull"]       = { cost = 7,  min = 6 },
+  ["Soliton Cannon"]      = { cost = 9,  min = 7 },
+  ["Transition Drive"]    = { cost = 9,  min = 7 },
+  ["Warp Portal"]         = { cost = 9,  min = 7 },
+  ["Zero-Point Source"]   = { cost = 15, min = 10 },
+}
+
+-- discount by the number of techs already on the track (printed on the player boards)
+TECH_DISCOUNT = { [0] = 0, 1, 2, 3, 4, 6, 8 }
+
+local TECH_AFFORD_BOARD_GUID = 'a31b35'
+local TECH_AFFORD_COLORS = { "White", "Red", "Blue", "Purple", "Green", "Yellow" }
+local TECH_AFFORD_MARGIN = 1.2          -- world units around the supply board that still count
+local TECH_AFFORD_OUTLINE = 0.14        -- frame line width, world units
+local TECH_AFFORD_TILE_THICKNESS = 0.165   -- one tech tile, world units (its bounds)
+local TECH_AFFORD_BADGE = { 0.95, 0.34 }   -- "Have" badge width, height, world units
+local TECH_AFFORD_BADGE_INSET = 0.12    -- badge distance from the tile's edge, world units
+local TECH_AFFORD_STYLE = { afford = "#33dd55", trade = "#2b9cff" }   -- green / blue
+local TECH_AFFORD_CORNER = 0.32         -- trade corners: share of the tile's side each arm covers
+local TECH_AFFORD_MARK = "\n\n[b][/b]"  -- start of the affordability part of a Description
+local TECH_AFFORD_UI_MARK = '<Panel id="TechAfford" active="false"/>'   -- starts the XML we put on a tile
+
+local techAffordPending = false
+local techAffordXmlOf = {}        -- tile GUID -> the XML last set on it
+
+-- "Military", "Grid", "Nano" or "Rare", and the short name, of a tech tile
+local function techAffordKind(tile)
+  local kind, name = string.match(tile.getName(), "^(%a+) Tech %- (.+)$")
+  return kind, name
+end
+
+-- printed start techs are named like the tiles, except Exiles' "Orbitals"
+local function techAffordSame(a, b)
+  return a == b or a .. "s" == b or a == b .. "s"
+end
+
+function TechAfford_baseDescription(tile)
+  local text = tile.getDescription() or ""
+  local at = string.find(text, TECH_AFFORD_MARK, 1, true)
+  if at ~= nil then return string.sub(text, 1, at - 1) end
+  return text
+end
+
+local function techAffordSetDescription(tile, text)
+  if tile.getDescription() ~= text then tile.setDescription(text) end
+end
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- the marks on a tile
+
+local function techAffordFmt(v) return string.format("%.1f", v) end
+
+-- which way along world z a color's seat is (+1 or -1)
+local function techAffordSeatSide(color)
+  local hand = Player[color] and Player[color].getHandTransform()
+  if hand ~= nil and hand.position.z > 0 then return 1 end
+  return -1
+end
+
+-- the turn that makes a mark's bottom face a color's seat: the object's own turn for the
+-- seats at low z (as the combat zone mat's, turned 90, shows side 1 at 90), + 180 at high z
+local function techAffordTurn(tile, color)
+  local turn = math.floor(tile.getRotation().y + 0.5)
+  if techAffordSeatSide(color) > 0 then turn = turn + 180 end
+  return turn % 360
+end
+
+-- the XML for a tile: one mark per color that has one (marks = color -> state)
+local function techAffordTileXml(tile, marks, hot)
+  local colors = {}
+  for _, color in ipairs(TECH_AFFORD_COLORS) do
+    if marks[color] then table.insert(colors, color) end
+  end
+  if #colors == 0 then return "" end
+
+  -- object UI is 100 units per local unit; the tile's local size from its bounds
+  local scale = tile.getScale()
+  local bounds = tile.getBounds()
+  local size = math.floor(math.min(bounds.size.x, bounds.size.z) / scale.x * 100)
+  -- the top of the stack (tech tiles are chips, identical ones stack into one object). Its
+  -- bounds cover sometimes the whole stack, sometimes one tile, so count from the
+  -- position, which is the bottom tile's centre.
+  local count = math.max(tile.getQuantity(), 1)
+  local lift = techAffordFmt(-((count - 0.5) * TECH_AFFORD_TILE_THICKNESS / scale.y * 100 + 1))
+  local bar = math.floor(TECH_AFFORD_OUTLINE / scale.x * 100)
+  local badgeW = math.floor(TECH_AFFORD_BADGE[1] / scale.x * 100)
+  local badgeH = math.floor(TECH_AFFORD_BADGE[2] / scale.x * 100)
+  local inset = math.floor(TECH_AFFORD_BADGE_INSET / scale.x * 100)
+
+  local xml = { TECH_AFFORD_UI_MARK }
+  for _, color in ipairs(colors) do
+    local state = marks[color]
+    local visibility = hot and "" or ('visibility="' .. color .. '"')
+    local inner
+    if state == "have" then
+      inner = string.format(
+        '<Panel raycastTarget="false" rectAlignment="LowerCenter" offsetXY="0 %d" width="%d" height="%d" color="#000000c8">'
+          .. '<Text raycastTarget="false" alignment="MiddleCenter" color="#e0e0e0" fontSize="%d" fontStyle="Bold">Have</Text></Panel>',
+        inset, badgeW, badgeH, math.floor(badgeH * 0.75))
+    elseif state == "afford" then
+      local c = TECH_AFFORD_STYLE.afford
+      inner = string.format(
+        '<Panel raycastTarget="false" rectAlignment="UpperCenter" width="%d" height="%d" color="%s"/>'
+          .. '<Panel raycastTarget="false" rectAlignment="LowerCenter" width="%d" height="%d" color="%s"/>'
+          .. '<Panel raycastTarget="false" rectAlignment="MiddleLeft" width="%d" height="%d" color="%s"/>'
+          .. '<Panel raycastTarget="false" rectAlignment="MiddleRight" width="%d" height="%d" color="%s"/>',
+        size, bar, c, size, bar, c, bar, size, c, bar, size, c)
+    else
+      -- trade: the four corners only, each an L of two bars
+      local c = TECH_AFFORD_STYLE.trade
+      local arm = math.floor(size * TECH_AFFORD_CORNER)
+      local parts = {}
+      for _, corner in ipairs({ "UpperLeft", "UpperRight", "LowerLeft", "LowerRight" }) do
+        table.insert(parts, string.format(
+          '<Panel raycastTarget="false" rectAlignment="%s" width="%d" height="%d" color="%s"/>'
+            .. '<Panel raycastTarget="false" rectAlignment="%s" width="%d" height="%d" color="%s"/>',
+          corner, arm, bar, c, corner, bar, arm, c))
+      end
+      inner = table.concat(parts)
+    end
+    table.insert(xml, string.format(
+      '<Panel %s raycastTarget="false" position="0 0 %s" rotation="0 0 %d" width="%d" height="%d" color="#00000000">%s</Panel>',
+      visibility, lift, techAffordTurn(tile, color), size, size, inner))
+  end
+  return table.concat(xml)
+end
+
+local function techAffordSetXml(tile, xml)
+  local guid = tile.getGUID()
+  if techAffordXmlOf[guid] == nil then
+    -- not set this session: what the tile has (ours from a save, or nothing)
+    local current = tile.UI.getXml() or ""
+    if string.find(current, TECH_AFFORD_UI_MARK, 1, true) == nil and xml == "" then
+      techAffordXmlOf[guid] = ""
+      return
+    end
+    techAffordXmlOf[guid] = current
+  end
+  if techAffordXmlOf[guid] == xml then return end
+  techAffordXmlOf[guid] = xml
+  tile.UI.setXml(xml)
+end
+
+-- is a tile in the supply: on the supply board (or just beside it), unlocked, not held
+local function techAffordInSupply(tile, area)
+  if area == nil or tile.getLock() or tile.held_by_color ~= nil then return false end
+  local p = tile.getPosition()
+  return p.x >= area.minX and p.x <= area.maxX and p.z >= area.minZ and p.z <= area.maxZ
+end
+
+local function techAffordArea()
+  local board = getObjectFromGUID(TECH_AFFORD_BOARD_GUID)
+  if board == nil then return nil end
+  local b = board.getBounds()
+  local m = TECH_AFFORD_MARGIN
+  return { minX = b.center.x - b.size.x / 2 - m, maxX = b.center.x + b.size.x / 2 + m,
+           minZ = b.center.z - b.size.z / 2 - m, maxZ = b.center.z + b.size.z / 2 + m }
+end
+
+-- prices
+
+-- per player with a faction: resources, techs per track and the techs they have
+local function techAffordPlayers(tiles)
+  local players = {}
+  for color, _ in pairs(PlayerState) do
+    local faction = PlayerState_faction(color)
+    if faction ~= nil and PlayerState_board(color) ~= nil then
+      local player = { counts = { Military = 0, Grid = 0, Nano = 0 }, owned = {} }
+      for snap, name in pairs(TECH_PRINTED[faction] or {}) do
+        for _, track in ipairs(TECH_TRACKS) do
+          if snap >= track.first and snap < track.first + TECH_TRACK_SPACES then
+            player.counts[track.name] = player.counts[track.name] + 1
+          end
+        end
+        table.insert(player.owned, name)
+      end
+      players[color] = player
+    end
+  end
+  if next(players) == nil then return players end
+
+  -- tiles locked on a track
+  for _, tile in ipairs(tiles) do
+    if tile.getLock() then
+      local where = TechTrack_spaceAt(tile)
+      local player = where and players[where.color]
+      if player ~= nil then
+        player.counts[where.track] = player.counts[where.track] + 1
+        table.insert(player.owned, select(2, techAffordKind(tile)))
+      end
+    end
+  end
+
+  -- resources: one scan of the table for every player
+  local found = { controlBoards = {}, markers = {} }
+  for _, obj in ipairs(getAllObjects()) do
+    if obj.getName() == "Control Board" then table.insert(found.controlBoards, obj)
+    elseif Resources_isMarker(obj) then table.insert(found.markers, obj) end
+  end
+  for color, player in pairs(players) do
+    local amounts = Resources_of(color, found)
+    local traded = 0
+    for _, resource in ipairs({ "money", "materials" }) do
+      local give, get = FactionData_trade(color, resource)
+      if give ~= nil then traded = traded + math.floor(amounts[resource] / give) * get end
+    end
+    player.science = amounts.science
+    player.traded = traded
+  end
+  return players
+end
+
+-- the price a player pays for a tech, or nil if it has no free space for it
+local function techAffordPrice(player, kind, name)
+  local data = TECH_COSTS[name]
+  if data == nil then return nil end
+  local best = nil
+  for _, track in ipairs(TECH_TRACKS) do
+    if kind == "Rare" or kind == track.name then
+      local count = player.counts[track.name]
+      if count < TECH_TRACK_SPACES then
+        local price = math.max(data.min, data.cost - (TECH_DISCOUNT[count] or 0))
+        if best == nil or price < best then best = price end
+      end
+    end
+  end
+  return best
+end
+
+-- "afford", "trade", "have" or false
+local function techAffordLevel(player, kind, name)
+  for _, owned in ipairs(player.owned) do
+    if techAffordSame(owned, name) then return "have" end
+  end
+  local price = techAffordPrice(player, kind, name)
+  if price == nil then return false end
+  if player.science >= price then return "afford" end
+  if player.science + player.traded >= price then return "trade" end
+  return false
+end
+
+local function techAffordName(color)
+  local name = ATO_isHotseat() and color or ATO_name(color)
+  return "[" .. Color.fromString(color):toHex(false) .. "]" .. name .. "[-]"
+end
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- update
+
+local function techAffordUpdate()
+  techAffordPending = false
+  local area = techAffordArea()
+  local hot = ATO_isHotseat()
+  local only = hot and Turns.turn_color or nil   -- hot seat: the turn color's marks only
+
+  local tiles = getObjectsWithTag("TechTile")
+  local players = techAffordPlayers(tiles)
+
+  for _, tile in ipairs(tiles) do
+    local kind, name = techAffordKind(tile)
+    local base = TechAfford_baseDescription(tile)
+    if kind == nil or not techAffordInSupply(tile, area) then
+      techAffordSetDescription(tile, base)
+      techAffordSetXml(tile, "")
+    else
+      local marks = {}
+      local lines = { afford = {}, trade = {} }
+      for _, color in ipairs(TECH_AFFORD_COLORS) do
+        local player = players[color]
+        if player ~= nil then
+          local level = techAffordLevel(player, kind, name)
+          if level and (not hot or color == only) then marks[color] = level end
+          if lines[level] ~= nil then table.insert(lines[level], techAffordName(color)) end
+        end
+      end
+      local extra = {}
+      if #lines.afford > 0 then table.insert(extra, "Can afford: " .. table.concat(lines.afford, ", ")) end
+      if #lines.trade > 0 then table.insert(extra, "By trading: " .. table.concat(lines.trade, ", ")) end
+      if #extra > 0 then
+        techAffordSetDescription(tile, base .. TECH_AFFORD_MARK .. table.concat(extra, "\n"))
+      else
+        techAffordSetDescription(tile, base)
+      end
+      techAffordSetXml(tile, techAffordTileXml(tile, marks, hot))
+    end
+  end
+end
+
+-- recompute everything a few frames from now (many events in a row run it once)
+function TechAfford_refresh()
+  if techAffordPending then return end
+  techAffordPending = true
+  Wait.frames(techAffordUpdate, 5)
+end
+
+-- once a moving tile or marker has come to rest. Right after setPositionSmooth (or a drop)
+-- it may not have started moving yet and still be resting, so first wait for it to move
+-- (or a second at most), then for it to stop.
+function TechAfford_refreshWhenResting(obj)
+  local function gone() return obj == nil or obj.isDestroyed() end
+  local function atRest()
+    Wait.condition(TechAfford_refresh, function() return gone() or obj.resting end, 5, TechAfford_refresh)
+  end
+  Wait.condition(atRest, function() return gone() or not obj.resting end, 1, atRest)
+end
+
+-- on load: clear the marks an earlier version put on the supply board, then fill in the tiles
+function TechAfford_init()
+  local board = getObjectFromGUID(TECH_AFFORD_BOARD_GUID)
+  if board ~= nil and string.find(board.UI.getXml() or "", "TechAfford_", 1, true) ~= nil then
+    board.UI.setXml("")
+  end
+  techAffordXmlOf = {}
+  TechAfford_refresh()
+end
+
+-- events (called from Global's onObjectDrop, onObjectPickUp, onObjectSpawn, onObjectDestroy)
+
+local function techAffordConcerns(obj)
+  return obj ~= nil and (obj.hasTag("TechTile") or Resources_isMarker(obj))
+end
+
+function TechAfford_onDrop(obj)
+  if techAffordConcerns(obj) then TechAfford_refreshWhenResting(obj) end
+end
+
+function TechAfford_onPickUp(obj)
+  if techAffordConcerns(obj) then TechAfford_refresh() end
+end
+
+-- hot seat shows the turn color's marks
+function TechAfford_onTurn()
+  if ATO_isHotseat() then TechAfford_refresh() end
+end
+
+function TechAfford_onSpawn(obj)
+  if techAffordConcerns(obj) then TechAfford_refreshWhenResting(obj) end
+end
+
+-- not while the table is unloaded (no frame comes then, so nothing runs)
+function TechAfford_onDestroy(obj)
+  if techAffordConcerns(obj) then TechAfford_refresh() end
+end

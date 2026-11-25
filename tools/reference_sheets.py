@@ -11,6 +11,8 @@ Writes (committed):
     reference/npc-ships.svg     every Ancient, Guardian and GCDS variant
     reference/homeworlds.svg    every faction's homeworld tile, with its VP and artifacts
                                 (SECTOR_VP in scripts/include/ScoreData.ttslua)
+    reference/tech-costs.svg    every tech tile, with its cost and minimum cost
+                                (TECH_COSTS in scripts/include/TechAfford.ttslua)
 
 Each card shows the tile and, under it, the stats recorded for it in
 scripts/include/ShipData.ttslua (Discovery tiles that aren't ship parts: what
@@ -32,6 +34,7 @@ from annotate_boards import DEFAULT_MOD, walk  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHIP_DATA = os.path.join(ROOT, 'scripts', 'include', 'ShipData.ttslua')
 SCORE_DATA = os.path.join(ROOT, 'scripts', 'include', 'ScoreData.ttslua')
+TECH_AFFORD = os.path.join(ROOT, 'scripts', 'include', 'TechAfford.ttslua')
 OUT = os.path.join(ROOT, 'reference')
 
 COLUMNS, CARD_W, CARD_H, IMAGE = 5, 300, 330, 220
@@ -207,6 +210,31 @@ def homeworld_cards(mod):
     return [(title, stats, url, False) for _, title, stats, url in sorted(cards)]
 
 
+def tech_cards(objects):
+    """Every tech tile (tag TechTile), by track then cost, with TECH_COSTS' cost and minimum."""
+    costs = entries(lua_table(open(TECH_AFFORD, encoding='utf-8').read(), 'TECH_COSTS', TECH_AFFORD))
+    tiles = {}
+    for obj in objects:
+        if 'TechTile' in (obj.get('Tags') or []):
+            tiles.setdefault(obj['Nickname'], (obj.get('CustomMesh') or {}).get('DiffuseURL'))
+    cards = []
+    for nickname, url in tiles.items():
+        track, _, name = nickname.partition(' Tech - ')
+        body = costs.get(name)
+        if body:
+            cost = int(re.search(r'cost\s*=\s*(\d+)', body).group(1))
+            low = int(re.search(r'min\s*=\s*(\d+)', body).group(1))
+            stats = f'cost {cost} · min {low}'
+        else:
+            cost, stats = 99, 'NOT IN TECH_COSTS'
+        order = ('Military', 'Grid', 'Nano', 'Rare').index(track) if track in ('Military', 'Grid', 'Nano', 'Rare') else 4
+        cards.append(((order, cost, name), f'{track}: {name}', stats, url))
+    missing = sorted(set(costs) - {nickname.partition(' Tech - ')[2] for nickname in tiles})
+    if missing:
+        print('warning: TECH_COSTS entries with no tile in the mod: ' + ', '.join(missing), file=sys.stderr)
+    return [(title, stats, url, False) for _, title, stats, url in sorted(cards)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--mod', default=DEFAULT_MOD, help='mod JSON file (default: %(default)s)')
@@ -254,6 +282,7 @@ def main():
         print('warning: NPC_TEXTURES not found in the mod: ' + ', '.join(missing), file=sys.stderr)
 
     homeworlds = homeworld_cards(mod)
+    techs = tech_cards(objects)
 
     os.makedirs(args.out, exist_ok=True)
     cache = {}
@@ -262,7 +291,8 @@ def main():
             ('ancient-tech.svg', f'Discovery tiles: {len(ancient_cards)} ship parts, {len(other_cards)} others'
                                  f' (every back: {kept_vp} VP when kept)', discovery_cards),
             ('npc-ships.svg', f'NPC ships: Ancients, Guardians, GCDS ({len(npc_cards)} variants)', npc_cards),
-            ('homeworlds.svg', f'Homeworlds ({len(homeworlds)}): VP and artifacts recorded in ScoreData', homeworlds)):
+            ('homeworlds.svg', f'Homeworlds ({len(homeworlds)}): VP and artifacts recorded in ScoreData', homeworlds),
+            ('tech-costs.svg', f'Tech tiles ({len(techs)}): cost and minimum recorded in TechAfford', techs)):
         with open(os.path.join(args.out, file_name), 'w', encoding='utf-8', newline='\n') as f:
             f.write(sheet(title, cards, args.embed, cache))
         print(f'{file_name:<18} {len(cards)} cards')
