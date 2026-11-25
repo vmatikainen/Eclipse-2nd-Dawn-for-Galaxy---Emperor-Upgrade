@@ -7,7 +7,10 @@
 --   afford  a green frame all round the tile's edge: Science in storage >= price
 --   trade   blue corners only: only with trades, Science + what Money and Materials
 --           trade for (FactionData_trade; each trade uses one resource type, no mixing)
---   The two differ in shape as well as color, for color blind players.
+--   next    an amber dot in the top right corner: neither of those, but Science in storage + Science
+--           production (Resources_income) pays for it, so after the next Production phase.
+--           Not in the last round (8, unless No Round Limit).
+--   The three differ in shape as well as color, for color blind players.
 --   have    a small "Have" badge at the tile's edge nearest the seat: the player already
 --           has this tech (a tile on their track, or a start tech printed on the board).
 --           Such a tech isn't priced.
@@ -18,7 +21,8 @@
 -- A tile's XML is only set when it changes; a tile that leaves the supply loses it.
 --
 -- Every tech tile in the supply also gets a public tooltip below its own Description,
--- e.g. "Can afford: Alice" / "By trading: Bob" (a level with no one is left out).
+-- e.g. "Can afford: Alice" / "By trading: Bob" / "Next round: Carol" (a level with no one
+-- is left out).
 -- TechAfford_baseDescription(tile) gives the tile's own Description. A tile that leaves
 -- the supply gets its own Description back.
 --
@@ -26,10 +30,10 @@
 -- player's board (printed start techs count). A full track (7) takes no more. A rare tech
 -- goes on any track with a free space and is priced by the cheapest of them.
 --
--- Updated (TechAfford_refresh, batched to once per few frames) when a tech tile or a resource
--- marker is dropped, picked up, spawned or deleted, when a tech is locked on a track
--- (TechTrack_reconcile), when drawTech has placed new tiles, on a turn change in hot seat,
--- and on load.
+-- Updated (TechAfford_refresh, batched to once per few frames) when a tech tile, a resource
+-- marker or a population cube is dropped, picked up, spawned or deleted, when a tech is
+-- locked on a track (TechTrack_reconcile), when drawTech has placed new tiles, on a turn
+-- change in hot seat, and on load.
 --------------------------------------------------------------------------------
 
 -- printed on each tech tile (read from the tile images): full cost and minimum cost
@@ -90,7 +94,9 @@ local TECH_AFFORD_OUTLINE = 0.14        -- frame line width, world units
 local TECH_AFFORD_TILE_THICKNESS = 0.165   -- one tech tile, world units (its bounds)
 local TECH_AFFORD_BADGE = { 0.95, 0.34 }   -- "Have" badge width, height, world units
 local TECH_AFFORD_BADGE_INSET = 0.12    -- badge distance from the tile's edge, world units
-local TECH_AFFORD_STYLE = { afford = "#33dd55", trade = "#2b9cff" }   -- green / blue
+local TECH_AFFORD_STYLE = { afford = "#33dd55", trade = "#2b9cff", next = "#ffb020" }   -- green / blue / amber
+local TECH_AFFORD_DOT = 0.5             -- next round dot diameter, world units
+local TECH_AFFORD_LAST_ROUND = 8
 local TECH_AFFORD_CORNER = 0.32         -- trade corners: share of the tile's side each arm covers
 local TECH_AFFORD_MARK = "\n\n[b][/b]"  -- start of the affordability part of a Description
 local TECH_AFFORD_UI_MARK = '<Panel id="TechAfford" active="false"/>'   -- starts the XML we put on a tile
@@ -173,6 +179,13 @@ local function techAffordTileXml(tile, marks, hot)
         '<Panel raycastTarget="false" rectAlignment="LowerCenter" offsetXY="0 %d" width="%d" height="%d" color="#000000c8">'
           .. '<Text raycastTarget="false" alignment="MiddleCenter" color="#e0e0e0" fontSize="%d" fontStyle="Bold">Have</Text></Panel>',
         inset, badgeW, badgeH, math.floor(badgeH * 0.75))
+    elseif state == "next" then
+      local dot = math.floor(TECH_AFFORD_DOT / scale.x * 100)
+      inner = string.format(
+        '<Text raycastTarget="false" rectAlignment="UpperRight" offsetXY="%d %d" alignment="MiddleCenter"'
+          .. ' width="%d" height="%d" color="%s" fontSize="%d" horizontalOverflow="Overflow" verticalOverflow="Overflow"'
+          .. ' outline="#000000" outlineSize="2 -2">&#9679;</Text>',
+        -inset, -inset, dot, dot, TECH_AFFORD_STYLE.next, dot)
     elseif state == "afford" then
       local c = TECH_AFFORD_STYLE.afford
       inner = string.format(
@@ -235,6 +248,14 @@ end
 
 -- prices
 
+-- is there a Production phase still to come before another tech can be bought
+local function techAffordHasNextRound()
+  if settings.NoRoundLimit then return true end
+  local marker = getObjectFromGUID(RoundMarker_GUID)
+  local round = marker and tonumber(marker.getDescription())
+  return round == nil or round < TECH_AFFORD_LAST_ROUND
+end
+
 -- per player with a faction: resources, techs per track and the techs they have
 local function techAffordPlayers(tiles)
   local players = {}
@@ -268,11 +289,14 @@ local function techAffordPlayers(tiles)
   end
 
   -- resources: one scan of the table for every player
-  local found = { controlBoards = {}, markers = {} }
+  local found = { controlBoards = {}, markers = {}, cubes = {} }
   for _, obj in ipairs(getAllObjects()) do
-    if obj.getName() == "Control Board" then table.insert(found.controlBoards, obj)
+    local name = obj.getName()
+    if name == "Control Board" then table.insert(found.controlBoards, obj)
+    elseif name == "Population" then table.insert(found.cubes, obj)
     elseif Resources_isMarker(obj) then table.insert(found.markers, obj) end
   end
+  local nextRound = techAffordHasNextRound()
   for color, player in pairs(players) do
     local amounts = Resources_of(color, found)
     local traded = 0
@@ -282,6 +306,7 @@ local function techAffordPlayers(tiles)
     end
     player.science = amounts.science
     player.traded = traded
+    player.income = nextRound and Resources_income(color, found).science or nil
   end
   return players
 end
@@ -303,7 +328,7 @@ local function techAffordPrice(player, kind, name)
   return best
 end
 
--- "afford", "trade", "have" or false
+-- "afford", "trade", "next", "have" or false
 local function techAffordLevel(player, kind, name)
   for _, owned in ipairs(player.owned) do
     if techAffordSame(owned, name) then return "have" end
@@ -312,6 +337,7 @@ local function techAffordLevel(player, kind, name)
   if price == nil then return false end
   if player.science >= price then return "afford" end
   if player.science + player.traded >= price then return "trade" end
+  if player.income ~= nil and player.science + player.income >= price then return "next" end
   return false
 end
 
@@ -341,7 +367,7 @@ local function techAffordUpdate()
       techAffordSetXml(tile, "")
     else
       local marks = {}
-      local lines = { afford = {}, trade = {} }
+      local lines = { afford = {}, trade = {}, next = {} }
       for _, color in ipairs(TECH_AFFORD_COLORS) do
         local player = players[color]
         if player ~= nil then
@@ -353,6 +379,7 @@ local function techAffordUpdate()
       local extra = {}
       if #lines.afford > 0 then table.insert(extra, "Can afford: " .. table.concat(lines.afford, ", ")) end
       if #lines.trade > 0 then table.insert(extra, "By trading: " .. table.concat(lines.trade, ", ")) end
+      if #lines.next > 0 then table.insert(extra, "Next round: " .. table.concat(lines.next, ", ")) end
       if #extra > 0 then
         techAffordSetDescription(tile, base .. TECH_AFFORD_MARK .. table.concat(extra, "\n"))
       else
@@ -394,7 +421,7 @@ end
 -- events (called from Global's onObjectDrop, onObjectPickUp, onObjectSpawn, onObjectDestroy)
 
 local function techAffordConcerns(obj)
-  return obj ~= nil and (obj.hasTag("TechTile") or Resources_isMarker(obj))
+  return obj ~= nil and (obj.hasTag("TechTile") or obj.hasTag("Population") or Resources_isMarker(obj))
 end
 
 function TechAfford_onDrop(obj)

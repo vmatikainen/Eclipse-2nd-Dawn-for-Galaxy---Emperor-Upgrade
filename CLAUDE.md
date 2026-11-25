@@ -176,7 +176,9 @@ https://api.tabletopsimulator.com/
 - `include/ScoreData.ttslua`, `include/Score.ttslua`: victory points (`Score_*`), see
   "Victory points" below.
 - `include/Resources.ttslua`: Money, Science and Materials in a player's storage
-  (`Resources_of(color)`), read from the markers on the control board's track.
+  (`Resources_of(color)`), read from the markers on the control board's track, and their
+  production (`Resources_income(color)`), read from the population cubes on the control
+  board's three wheels (the same for every faction: 2, 3, 4, … 28, one step per cube gone).
 - `include/FactionData.ttslua`: per-faction values printed on the boards (`FACTION_DATA`,
   trade rates: `FactionData_trade(color, resource)`).
 - `include/TechAfford.ttslua`: which techs on the supply board each player can afford
@@ -609,7 +611,9 @@ Always on, not a house rule.
 - **Levels,** per player: *afford* (Science ≥ price), *trade* (Science + ⌊Money / rate⌋ ×
   get + ⌊Materials / rate⌋ × get ≥ price, one resource type per trade, rates from
   `FactionData_trade`: Terrans 2:1, Orion 4:1, Rho Indi 3:1 but Money 3:2, the rest 3:1),
-  and *have* (the player has the tech: a tile on their track or a printed start tech,
+  *next* (neither, but Science + Science production ≥ price: affordable after the next
+  Production phase, `Resources_income`; not in round 8 unless No Round Limit), and *have*
+  (the player has the tech: a tile on their track or a printed start tech,
   `TECH_PRINTED`; an owned tech isn't priced).
 - **Price** = `max(min, cost − TECH_DISCOUNT[n])`, `n` = techs on that track of the
   player's board (printed start techs count), `TECH_DISCOUNT = { [0] = 0, 1, 2, 3, 4, 6, 8 }`.
@@ -618,8 +622,8 @@ Always on, not a house rule.
 - **Private marks, on the tiles:** every tile in the supply (on the supply board or within
   `TECH_AFFORD_MARGIN` of it, unlocked, not held) gets its own object XML UI, so the marks
   move with it: a green frame of four solid bars on the tile's edge (afford), blue corners
-  only (trade: shape and color differ, for color blind players), or a "Have" badge at the
-  edge nearest the seat. Tech tiles are chips: identical ones merge into one stack object.
+  only (trade), an amber dot in the top right corner (next round; shape and color differ, for color
+  blind players), or a "Have" badge at the edge nearest the seat. Tech tiles are chips: identical ones merge into one stack object.
   Its bounds cover sometimes the whole stack, sometimes one tile, so the marks are placed
   from the position (the bottom tile's centre): `getQuantity() - 0.5` tiles up. One mark per color with a state,
   `visibility="<color>"`, `raycastTarget="false"`, turned to face that color's seat (an
@@ -630,13 +634,13 @@ Always on, not a house rule.
   `visibility` and only `Turns.turn_color`'s are put on the tiles (refreshed from
   `onPlayerTurn`). The supply board itself has no UI: `TechAfford_init` clears what an
   earlier version put there.
-- **Public tooltip:** a tile in the supply gets `Can afford: ...` / `By trading: ...` (names as
+- **Public tooltip:** a tile in the supply gets `Can afford: ...` / `By trading: ...` / `Next round: ...` (names as
   BBCode in their color, color names in hot seat) below its own Description. Read the
   tile's own text with `TechAfford_baseDescription(tile)`, never `getDescription()`
   (`placeTech` reads the tile number from its start). A tile that leaves the supply gets its
   own Description back.
-- **Updates** (`TechAfford_refresh`, batched): drop, pick-up, spawn or delete of a tech tile
-  or resource marker (Global's handlers), `TechTrack_reconcile`, tiles placed by
+- **Updates** (`TechAfford_refresh`, batched): drop, pick-up, spawn or delete of a tech tile,
+  resource marker or population cube (Global's handlers), `TechTrack_reconcile`, tiles placed by
   `drawTech`, a turn change in hot seat, and load. Nothing is saved.
 
 ## Conventions

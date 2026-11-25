@@ -285,12 +285,15 @@ their marks:
 - **Blue corners:** you can buy it if you trade Money or Materials for Science. Each trade
   uses one resource: at 3:1, 3 Materials give 1 Science, but 2 Materials + 1 Money give
   nothing. Trade rates are as printed by your faction's name.
+- **Amber dot in the top right corner:** you can buy it next round, with your Science after the next
+  Production phase (your storage plus what your Science population wheel produces). Trading
+  isn't counted here. Not shown in the last round.
 - **Have:** you already have this tech.
 
 The price takes the discount of your track into account (start techs printed on your board
 count), and a rare tech is priced on your cheapest track with room for it. Hover over a
 tile to see who can afford it, for everyone. The marks follow the resource markers on your
-storage track, so keep them up to date. In hot seat, the marks shown are those of the player whose
+storage track and the population cubes on your Science wheel, so keep them up to date. In hot seat, the marks shown are those of the player whose
 turn it is.
 
 ## Player colors and hot seat
