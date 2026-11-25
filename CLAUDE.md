@@ -63,7 +63,7 @@ memory. Rule books are in the mod as `Rulebook` PDFs.
 | `3844682665.json` | **Local only, git-ignored.** The mod file TTS loads: every object on the table, scripts embedded as one-line strings. Rebuilt from the repo with `tools/rebuild_mod.py`. Named after our Workshop item. |
 | `scripts/` | Scripts extracted from the mod file. **Edit these**, never the JSON directly. |
 | `tools/rebuild_mod.py` | Rebuilds a local mod file from the repo: `tts_scripts.py build` + `apply_object_fixes.py` + `normalize_board_snaps.py`, and copies the thumbnail `assets/workshop_cover_square.png` to `3844682665.png`. `--mod` for another file. |
-| `tools/apply_object_fixes.py` | Rules for our changes to objects in the mod JSON: sector tiles aligned in their bags, Reputation bag drawing in random order, the mod's name (`SaveName`), a Traitor spot per seat (table snap points tagged `Traitor`, a locked 3D text label "Traitor" beside each, and the Traitor tile tagged and snapping), the setup popup background (`assets/emperor_background.jpg`, uploaded to Steam Cloud: `SETUP_BACKGROUND_URL`. A new image has to be uploaded again (TTS *Modding → Cloud Manager*) and the URL updated). `--check` exits 1 if a rule still needs applying. |
+| `tools/apply_object_fixes.py` | Rules for our changes to objects in the mod JSON: sector tiles aligned in their bags, Reputation bag drawing in random order, the mod's name (`SaveName`), a Traitor spot per seat (table snap points tagged `Traitor`, a locked 3D text label "Traitor" beside each, and the Traitor tile tagged and snapping), a faint "Muon source" label on each player board's Muon Source spots (the board's `XmlUI`), the setup popup background (`assets/emperor_background.jpg`, uploaded to Steam Cloud: `SETUP_BACKGROUND_URL`. A new image has to be uploaded again (TTS *Modding → Cloud Manager*) and the URL updated). `--check` exits 1 if a rule still needs applying. |
 | `tools/tts_scripts.py` | `extract` / `build` / `check` scripts between `scripts/` and the mod JSON. |
 | `tools/normalize_board_snaps.py` | Puts every player board's snap points into the canonical order (see "Snap point convention"). `--check` exits 1 if a board isn't normalized. Edits only the boards' snap point arrays. |
 | `tools/annotate_boards.py` | Draws every player board's snap points, numbered and coloured by tag, on its image → `board-maps/`. Re-run after changing board snap points. |
@@ -321,6 +321,11 @@ editing boards in TTS.
   - So "Cruiser cell 5 = right column, top" means the same on every board.
 - **Muon Source** is placed outside the blueprint. Its spot is right of the ship's name, above
   the right-hand column. On the Starbase/Orbital it's the top middle, covering the ⊠ symbol.
+  The board art doesn't mark it, so each spot shows a small, faint "Muon source" text: the
+  board's `XmlUI`, set by the `muon-source-labels` rule in `apply_object_fixes.py` (not on
+  `Unused` placeholders or the Pyxis board). A script that sets a board's UI
+  (`board.UI.setXml`) would replace the labels, so it has to keep them. The XML starts with
+  `GENERATED_MARKER`, so `tts_scripts.py` doesn't extract it into `scripts/` or clear it on build.
 - **Every tech space has a snap point,** including spaces with a pre-printed start tech
   (e.g. Rho Indi's Gauss Shield at 54, Exiles' Orbitals at 61). This is for later UX, such
   as dragging a printed start tech to create its token.
