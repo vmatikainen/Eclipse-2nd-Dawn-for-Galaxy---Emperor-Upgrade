@@ -3,16 +3,35 @@
 -- resource markers on the storage track of their control board.
 --
 --   Resources_of(color [, found]) -> { money, science, materials } (0 for a marker not found)
+--   Resources_income(color [, found]) -> { money, science, materials }: what each population
+--                                        wheel produces (0 for a wheel not found)
 --   Resources_trackOffset(amount, inv) -> x, z of the track space for an amount, from the
 --                                        control board's centre (spawnResourceMarker uses it)
 --
--- `found` is optional: { controlBoards = { obj, ... }, markers = { obj, ... } } from a pass
--- over the table the caller already made (Score's snapshot). Without it, the table is scanned.
+-- `found` is optional: { controlBoards = { obj, ... }, markers = { obj, ... },
+-- cubes = { obj, ... } } from a pass over the table the caller already made (Score's
+-- snapshot). Without it, the table is scanned.
 -- Used by Score (the tie breaker) and TechAfford (which techs a player can afford).
+--
+-- Income: the control board has one population wheel per resource, the same for every
+-- faction (Pyxis Unity is deprecated and not read). Each prints 2, 3, 4, 6, 8, 10, 12, 15, 18,
+-- 21, 24, 28 clockwise; setup covers all but the "2" with 11 cubes, minus those that start on
+-- the homeworld. A cube leaving the wheel uncovers the next value, so the production is
+-- RESOURCES_PRODUCTION[1 + cubes that have left]. Cubes are counted by distance from the
+-- wheel's centre, so it doesn't matter which spaces they lie on.
 --------------------------------------------------------------------------------
 
 local RESOURCES_TRACK_LAST = 39   -- the storage track runs 0..39 around the control board
 local RESOURCES_MARKERS = { Materials = "materials", Science = "science", Money = "money" }
+local RESOURCES_PRODUCTION = { 2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28 }
+local RESOURCES_WHEEL_CUBES = 11
+-- the control board's snap points of each wheel (local +x is the image's left)
+local RESOURCES_WHEEL_SNAPS = {
+  materials = { 41, 52 },
+  science   = { 53, 64 },
+  money     = { 65, 76 },
+}
+local RESOURCES_WHEEL_REACH = 2.7   -- world units from a wheel's centre that count as on it
 
 -- where the storage track's space for an amount is, from the control board's centre (the
 -- seats at negative z: inv = 1; the far side is mirrored, inv = -1). The track runs 0..15
@@ -47,12 +66,13 @@ end
 
 -- the control boards and resource markers on the table
 local function resourcesFind()
-  local found = { controlBoards = {}, markers = {} }
+  local found = { controlBoards = {}, markers = {}, cubes = {} }
   for _, obj in ipairs(getAllObjects()) do
     if obj ~= nil and not obj.isDestroyed() then
       local name = obj.getName()
       if name == "Control Board" then table.insert(found.controlBoards, obj)
       elseif RESOURCES_MARKERS[name] ~= nil then table.insert(found.markers, obj)
+      elseif name == "Population" then table.insert(found.cubes, obj)
       end
     end
   end
@@ -107,4 +127,47 @@ function Resources_of(color, found)
     end
   end
   return amounts
+end
+
+-- the world position of each wheel's centre on a control board, nil without its snap points
+local function resourcesWheelCenters(board)
+  local snaps = board.getSnapPoints()
+  local centers = {}
+  for resource, range in pairs(RESOURCES_WHEEL_SNAPS) do
+    if snaps[range[2]] == nil then return nil end
+    local x, z, n = 0, 0, 0
+    for i = range[1], range[2] do
+      x, z, n = x + snaps[i].position.x, z + snaps[i].position.z, n + 1
+    end
+    centers[resource] = board.positionToWorld(Vector(x / n, snaps[range[1]].position.y, z / n))
+  end
+  return centers
+end
+
+function Resources_income(color, found)
+  found = found or resourcesFind()
+  local income = { materials = 0, science = 0, money = 0 }
+  local board = resourcesControlBoard(found, color)
+  local centers = board and resourcesWheelCenters(board)
+  if centers == nil then return income end
+
+  local cubes = { materials = 0, science = 0, money = 0 }
+  for _, cube in ipairs(found.cubes or {}) do
+    if not cube.isDestroyed() and cube.held_by_color == nil then
+      local p = cube.getPosition()
+      local best, bestD = nil, nil
+      for resource, center in pairs(centers) do
+        local d = resourcesDistance2(p, center)
+        if bestD == nil or d < bestD then best, bestD = resource, d end
+      end
+      if bestD <= RESOURCES_WHEEL_REACH * RESOURCES_WHEEL_REACH then
+        cubes[best] = cubes[best] + 1
+      end
+    end
+  end
+  for resource, n in pairs(cubes) do
+    local left = RESOURCES_WHEEL_CUBES - math.min(n, RESOURCES_WHEEL_CUBES)
+    income[resource] = RESOURCES_PRODUCTION[1 + left]
+  end
+  return income
 end
