@@ -12,7 +12,7 @@ It adds turn order options, including the **Pass order** house rule (see below).
 | `scripts/` | The mod's scripts as readable files. **Edit these.** |
 | `tools/rebuild_mod.py` | Rebuilds your local mod file from the repository (scripts and board snap points). |
 | `tools/tts_scripts.py` | Copies scripts between `scripts/` and a mod file. |
-| `tools/apply_object_fixes.py` | Applies our changes to objects in the mod file (e.g. sector tiles aligned in their bags). |
+| `tools/apply_object_fixes.py` | Applies our changes to objects in the mod file (e.g. sector tiles aligned in their bags, the rulebook tiles and pages). |
 | `tools/normalize_board_snaps.py` | Gives every player board's snap points the same numbering (see CLAUDE.md). `--check` reports boards that don't follow it. |
 | `scripts/include/` | Script files pulled into other scripts with `#include Name` (same format as the VS Code TTS extension). |
 | `tools/reference_sheets.py` | Draws `reference/ship-parts.svg`, `reference/ancient-tech.svg`, `reference/npc-ships.svg`, `reference/homeworlds.svg` and `reference/tech-costs.svg`: every ship part, ancient ship part, NPC ship variant, homeworld and tech tile, with the stats our data records. |
@@ -295,6 +295,40 @@ count), and a rare tech is priced on your cheapest track with room for it. Hover
 tile to see who can afford it, for everyone. The marks follow the resource markers on your
 storage track and the population cubes on your Science wheel, so keep them up to date. In hot seat, the marks shown are those of the player whose
 turn it is.
+
+## Rulebook
+
+Each long side of the table has a small rulebook cover with a **Rulebook** button. Click it
+to read the rulebook on your screen. Only you see it, so every player can be on a different
+page:
+
+- **Prev / Next** turn the page. The page number is the one printed in the book.
+- **Sections** lists the parts of the book (Setup, Action Phase, Combat, Species, FAQ, …)
+  and jumps to the one you pick.
+- **Zoom** shows the page at full size, for small print. Scroll it with the mouse wheel.
+  **Fit** shows the whole page again.
+- **X**, or the Rulebook button again, closes it. You can drag the panel by its edge.
+
+In hot seat everyone shares one rulebook panel.
+
+### Rulebook pages (developers)
+
+The panel shows the pages as images (TTS's UI can't show a PDF), loaded with the mod as the
+UI assets `Rulebook01` … `Rulebook32`. They are made once from the original mod's
+rulebook PDF (the `Custom_PDF` objects `c055de` and `24ffaa`, 32 A4 pages):
+<https://steamusercontent-a.akamaihd.net/ugc/1843661083926852629/E3719E069FC5E65648AAAA53CDC137AC0765365D/>
+
+1. Render each page to a JPG 1240 pixels wide, quality about 65, named `page-01.jpg` …
+   `page-32.jpg`, into `assets/rulebook/` (git-ignored). With Poppler:
+   `pdftoppm -jpeg -jpegopt quality=65 -scale-to-x 1240 -scale-to-y -1 rulebook.pdf assets/rulebook/page`.
+2. Rebuild. Without Steam URLs, the build points the assets at these local files, which
+   only works on your machine.
+3. To publish, upload the images in TTS (*Modding → Cloud Manager*) and add each one's URL
+   to `RULEBOOK_PAGE_URLS` in `tools/apply_object_fixes.py` (page number → URL). A page
+   without a URL keeps using its local file.
+
+If a page has neither a URL nor an image, the rebuild leaves the two original PDF rulebooks
+on the table.
 
 ## Player colors and hot seat
 

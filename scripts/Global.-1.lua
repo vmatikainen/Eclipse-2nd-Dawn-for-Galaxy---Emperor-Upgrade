@@ -349,6 +349,7 @@ function onLoad(saveData)
       TechTrack_reconcile()
       CombatSim_restore()
       TechAfford_init()
+      Rulebook_init()
     end, 1)
     setTableMenu()
 
@@ -3181,3 +3182,8 @@ end
 #include Resources
 #include FactionData
 #include TechAfford
+
+--------------------------------------------------------------------------------
+-- The rulebook on screen, for one player only (scripts/include/Rulebook.ttslua)
+--------------------------------------------------------------------------------
+#include Rulebook
