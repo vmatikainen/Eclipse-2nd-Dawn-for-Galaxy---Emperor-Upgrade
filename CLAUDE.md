@@ -63,7 +63,7 @@ memory. Rule books are in the mod as `Rulebook` PDFs.
 | `3844682665.json` | **Local only, git-ignored.** The mod file TTS loads: every object on the table, scripts embedded as one-line strings. Rebuilt from the repo with `tools/rebuild_mod.py`. Named after our Workshop item. |
 | `scripts/` | Scripts extracted from the mod file. **Edit these**, never the JSON directly. |
 | `tools/rebuild_mod.py` | Rebuilds a local mod file from the repo: `tts_scripts.py build` + `apply_object_fixes.py` + `normalize_board_snaps.py`, and copies the thumbnail `assets/workshop_cover_square.png` to `3844682665.png`. `--mod` for another file. |
-| `tools/apply_object_fixes.py` | Rules for our changes to objects in the mod JSON: sector tiles aligned in their bags, Reputation bag drawing in random order, the mod's name (`SaveName`), a Traitor spot per seat (table snap points tagged `Traitor`, a locked 3D text label "Traitor" beside each, and the Traitor tile tagged and snapping), a faint "Muon source" label on each player board's Muon Source spots (the board's `XmlUI`), the setup popup background (`assets/emperor_background.jpg`, uploaded to Steam Cloud: `SETUP_BACKGROUND_URL`. A new image has to be uploaded again (TTS *Modding → Cloud Manager*) and the URL updated). `--check` exits 1 if a rule still needs applying. |
+| `tools/apply_object_fixes.py` | Rules for our changes to objects in the mod JSON: sector tiles aligned in their bags, Reputation bag drawing in random order, the mod's name (`SaveName`), a Traitor spot per seat (table snap points tagged `Traitor`, a locked 3D text label "Traitor" in the middle of each, and the Traitor tile tagged and snapping), a faint "Muon source" label on each player board's Muon Source spots (the board's `XmlUI`), the setup popup background (`assets/emperor_background.jpg`, uploaded to Steam Cloud: `SETUP_BACKGROUND_URL`. A new image has to be uploaded again (TTS *Modding → Cloud Manager*) and the URL updated), and the rulebook: the two big PDFs replaced by small cover tiles (GMNotes `Rulebook`) and the 32 pages as UI assets `Rulebook01`…`Rulebook32` (per page: its Steam URL in `RULEBOOK_PAGE_URLS`, else the git-ignored `assets/rulebook/page-NN.jpg` as a local URL; with neither the rule does nothing; README "Rulebook pages"), and the dice bags in a column at the combat zone's end of each long side, where the PDFs were (`DICE_BAG_COLUMN`). `--check` exits 1 if a rule still needs applying. |
 | `tools/tts_scripts.py` | `extract` / `build` / `check` scripts between `scripts/` and the mod JSON. |
 | `tools/normalize_board_snaps.py` | Puts every player board's snap points into the canonical order (see "Snap point convention"). `--check` exits 1 if a board isn't normalized. Edits only the boards' snap point arrays. |
 | `tools/annotate_boards.py` | Draws every player board's snap points, numbered and coloured by tag, on its image → `board-maps/`. Re-run after changing board snap points. |
@@ -192,6 +192,13 @@ https://api.tabletopsimulator.com/
   picking a race (`RaceButtons_update`, with `setInvisibleTo`). Called when the race pick
   changes, when race selection ends, and from `updateGameStateBasedOnSettings` (which
   shows or hides the expansion buttons first).
+- `include/Rulebook.ttslua`: the rulebook on screen (`Rulebook_*`). The cover tiles
+  (GMNotes `Rulebook`) get a button on load (`Rulebook_init`). It opens a panel for the
+  clicking color only (`visibility`), with page, zoom and a section list (`RULEBOOK_SECTIONS`).
+  In hot seat there's one shared panel (`"Shared"`). The 13 panels aren't in `Global.-1.xml`:
+  `Rulebook_build` appends them to `UI.getXmlTable()` on the first open and puts it back
+  with `UI.setXmlTable`. That table holds the UI's current state, so the rest of the UI is kept.
+  Labels in the table avoid `<`, `>` and `&`.
 - `Global.-1.xml`: on-screen UI (setup popup, turn order panel).
 - `Button <Race>.<guid>.lua`: one per race. Each holds a faction table (`Name`,
   `startingShip`, `numStartingShips`, resources, `Influence`, `Box_GUID`, population
@@ -496,7 +503,8 @@ resolve it themselves (damage, destroyed and escaped ships).
   column, highest initiative on the seats' left. The ships are nearest the divider, with
   that type's missile dice (Description `Missile`) under them, since they're thrown first,
   then its cannon dice. Dice
-  are taken from the dice bags (two sets, `COMBAT_ZONE_DICE_BAGS`).
+  are taken from the dice bags (two sets, `COMBAT_ZONE_DICE_BAGS`, one column per long side at
+  the combat zone's end: `dice-bags` in `apply_object_fixes.py`).
 - **`CombatZone_current`** = `{ key, title, attacker, defender, rows, ships = { [guid] =
   { side, position, rotation } }, dice = { guid } }`. It's saved as `settings.CombatZone` and
   restored in `onLoad` before `HexState_restore`. While it's set, each strip has two

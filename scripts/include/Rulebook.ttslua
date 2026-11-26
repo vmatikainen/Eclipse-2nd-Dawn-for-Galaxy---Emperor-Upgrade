@@ -1,0 +1,347 @@
+-- Rulebook viewer (issue #28): the rulebook on screen, for one player only.
+--
+-- Two small locked tiles showing the cover (GMNotes "Rulebook", one per long side of the
+-- table, placed by tools/apply_object_fixes.py's "rulebook" rule) get a "Rulebook" button.
+-- Clicking it opens a panel for the player who clicked, which nobody else sees, so every
+-- player turns pages on their own. The pages are images, the UI assets "Rulebook01" ..
+-- "Rulebook32" (XML UI can't show a PDF), preloaded with the mod.
+--
+-- Each viewer (a player color) has its own panel, with visibility = that color. The panels
+-- are added to Global's UI the first time anyone opens the rulebook (Rulebook_build), not
+-- written out in Global.-1.xml: thirteen copies of the same panel. UI.getXmlTable returns the
+-- UI as it is now (attributes and values set by scripts included), so putting it back with the
+-- panels appended keeps the rest of the UI as it was. Labels avoid < > and &: the table is
+-- turned back into XML text.
+--
+-- Hot seat: TTS shows the shared client one fixed color's elements whoever is playing, so in
+-- hot seat everyone uses one shared panel without visibility ("Shared").
+--
+-- What each viewer has open (page, zoom) isn't saved: after a load the rulebook is closed,
+-- and opens on page 1.
+
+RULEBOOK_PAGES = 32
+RULEBOOK_ASSET = "Rulebook%02d"
+RULEBOOK_TILE_NOTE = "Rulebook"
+RULEBOOK_VIEWERS = { "White", "Red", "Blue", "Purple", "Green", "Yellow",
+                     "Orange", "Pink", "Teal", "Brown", "Grey", "Black", "Shared" }
+-- jump list: first page of each part of the book (the PDF's pages = the printed numbers)
+RULEBOOK_SECTIONS = {
+  { 1, "Cover" },
+  { 3, "Overview and Components" },
+  { 4, "Game Setup" },
+  { 6, "Game Concepts" },
+  { 8, "Game Round, Action Phase" },
+  { 9, "Explore" },
+  { 10, "Research" },
+  { 11, "Techs" },
+  { 12, "Upgrade" },
+  { 13, "Build and Move" },
+  { 14, "Influence and Reactions" },
+  { 15, "Diplomacy" },
+  { 16, "Action Phase Example" },
+  { 18, "Combat Phase" },
+  { 22, "Combat Example" },
+  { 24, "Upkeep Phase" },
+  { 25, "Cleanup and Game End" },
+  { 26, "Species" },
+  { 30, "Ancients and FAQ" },
+  { 31, "Tech Reference" },
+  { 32, "Player Aid" },
+}
+-- the page images are 1240 x 1754. Fit: a page as high as fits a 1080 high screen;
+-- zoom: the image's own size, scrolled
+RULEBOOK_FIT = { width = 680, height = 962 }
+RULEBOOK_ZOOM = { width = 1240, height = 1754 }
+RULEBOOK_SCROLLBAR = 16
+RULEBOOK_BAR = 34     -- the button row's height
+RULEBOOK_PAD = 8
+RULEBOOK_SECTION_ROW = 28
+-- raise when the panels change: a save keeps the panels it was made with, and those of an
+-- older version are rebuilt
+RULEBOOK_UI_VERSION = 2
+-- the button on the tiles (tile scale 2: a local unit is about 500 button units)
+RULEBOOK_BUTTON = { position = { 0, 0.15, 0 }, width = 800, height = 200, font_size = 110 }
+
+Rulebook_state = {}   -- viewer -> { page = n, zoom = bool, open = bool, sections = bool }
+
+local function state(viewer)
+  local s = Rulebook_state[viewer]
+  if s == nil then
+    s = { page = 1, zoom = false, open = false, sections = false }
+    Rulebook_state[viewer] = s
+  end
+  return s
+end
+
+local function id(viewer, part)
+  return "Rulebook_" .. viewer .. (part and ("_" .. part) or "")
+end
+
+--------------------------------------------------------------------------------
+-- the tiles' buttons
+
+function Rulebook_tiles()
+  local tiles = {}
+  for _, obj in ipairs(getObjects()) do
+    if obj.getGMNotes() == RULEBOOK_TILE_NOTE then table.insert(tiles, obj) end
+  end
+  return tiles
+end
+
+function Rulebook_addButton(tile)
+  for _, button in ipairs(tile.getButtons() or {}) do
+    if button.click_function == "Rulebook_click" then return end
+  end
+  tile.createButton({
+    click_function = "Rulebook_click",
+    function_owner = Global,
+    label = "Rulebook",
+    tooltip = "Read the rulebook on your screen (only you see it)",
+    position = RULEBOOK_BUTTON.position,
+    width = RULEBOOK_BUTTON.width,
+    height = RULEBOOK_BUTTON.height,
+    font_size = RULEBOOK_BUTTON.font_size,
+    color = { 0.85, 0.85, 0.85, 1 },
+  })
+end
+
+-- called by onLoad: buttons made by scripts aren't saved. A save can hold the panels
+-- (they're part of Global's UI once built): close them, nobody's reading after a load.
+function Rulebook_init()
+  for _, tile in ipairs(Rulebook_tiles()) do Rulebook_addButton(tile) end
+  for _, element in ipairs(UI.getXmlTable() or {}) do
+    local elementId = element.attributes and element.attributes.id or ""
+    if string.sub(elementId, 1, 9) == "Rulebook_" then UI.setAttribute(elementId, "active", "false") end
+  end
+end
+
+-- the viewer a player reads with: their color, or the shared panel in hot seat
+function Rulebook_viewerOf(color)
+  if ATO_isHotseat() then return "Shared" end
+  for _, viewer in ipairs(RULEBOOK_VIEWERS) do
+    if viewer == color then return viewer end
+  end
+  return "Shared"
+end
+
+-- click on a tile's button: open the rulebook for that player, or close it if it's open
+function Rulebook_click(tile, color)
+  local viewer = Rulebook_viewerOf(color)
+  if state(viewer).open then
+    Rulebook_close(nil, viewer)
+  else
+    Rulebook_open(viewer)
+  end
+end
+
+--------------------------------------------------------------------------------
+-- the panels
+
+local function el(tag, attributes, children, value)
+  return { tag = tag, attributes = attributes, children = children or {}, value = value }
+end
+
+local function button(viewer, label, handler, width, extra)
+  local attributes = { preferredWidth = tostring(width), flexibleWidth = "0",
+                       onClick = handler .. "(" .. viewer .. ")" }
+  for k, v in pairs(extra or {}) do attributes[k] = v end
+  return el("Button", attributes, nil, label)
+end
+
+local function panelWidth(zoom)
+  if zoom then return RULEBOOK_ZOOM.width + RULEBOOK_SCROLLBAR + 2 * RULEBOOK_PAD end
+  return RULEBOOK_FIT.width + 2 * RULEBOOK_PAD
+end
+
+local function panel(viewer)
+  local width = panelWidth(false)
+  local sections = {}
+  for _, section in ipairs(RULEBOOK_SECTIONS) do
+    table.insert(sections, el("Button", {
+      onClick = "Rulebook_section(" .. viewer .. "_" .. section[1] .. ")",
+      fontSize = "13", textAlignment = "MiddleLeft", color = "#dddddd",
+      preferredHeight = tostring(RULEBOOK_SECTION_ROW - 2), flexibleHeight = "0",
+    }, nil, string.format("%d  %s", section[1], section[2])))
+  end
+  local listHeight = #RULEBOOK_SECTIONS * RULEBOOK_SECTION_ROW + 2 * RULEBOOK_PAD
+
+  return el("Panel", {
+    id = id(viewer),
+    active = "false",
+    visibility = viewer == "Shared" and "" or viewer,
+    width = tostring(width),
+    height = tostring(RULEBOOK_BAR + RULEBOOK_FIT.height + 3 * RULEBOOK_PAD),
+    rectAlignment = "MiddleCenter",
+    allowDragging = "true",
+    returnToOriginalPositionWhenReleased = "false",
+    color = "rgba(0.1, 0.1, 0.1, 0.95)",
+    outline = "Grey",
+    outlineSize = "2 -2",
+  }, {
+    el("HorizontalLayout", {
+      id = id(viewer, "Bar"),
+      rectAlignment = "UpperCenter",
+      width = tostring(width - 2 * RULEBOOK_PAD),
+      height = tostring(RULEBOOK_BAR),
+      offsetXY = "0 -" .. RULEBOOK_PAD,
+      spacing = "6",
+      childAlignment = "MiddleCenter",
+      childForceExpandWidth = "false",
+    }, {
+      button(viewer, "Sections", "Rulebook_toggleSections", 100),
+      button(viewer, "Prev", "Rulebook_prev", 80),
+      el("Text", { id = id(viewer, "PageText"), preferredWidth = "80", flexibleWidth = "0",
+                   alignment = "MiddleCenter", fontSize = "15" }, nil, "1 / " .. RULEBOOK_PAGES),
+      button(viewer, "Next", "Rulebook_next", 80),
+      button(viewer, "Zoom", "Rulebook_zoom", 80, { id = id(viewer, "Zoom") }),
+      button(viewer, "X", "Rulebook_close", 34, { color = "#ffb0b0" }),
+    }),
+    el("VerticalScrollView", {
+      id = id(viewer, "Scroll"),
+      rectAlignment = "LowerCenter",
+      width = tostring(RULEBOOK_FIT.width),
+      height = tostring(RULEBOOK_FIT.height),
+      offsetXY = "0 " .. RULEBOOK_PAD,
+      scrollSensitivity = "40",
+      color = "rgba(0, 0, 0, 0)",
+    }, {
+      el("VerticalLayout", { id = id(viewer, "Content"), height = tostring(RULEBOOK_FIT.height) }, {
+        el("Image", { id = id(viewer, "Image"), image = string.format(RULEBOOK_ASSET, 1),
+                      preserveAspect = "true" }),
+      }),
+    }),
+    el("Panel", {
+      id = id(viewer, "Sections"),
+      active = "false",
+      rectAlignment = "UpperLeft",
+      width = "240",
+      height = tostring(listHeight),
+      offsetXY = RULEBOOK_PAD .. " -" .. (RULEBOOK_BAR + 2 * RULEBOOK_PAD),
+      color = "rgba(0.15, 0.15, 0.15, 0.97)",
+      outline = "Grey",
+      outlineSize = "1 -1",
+    }, {
+      el("VerticalLayout", { padding = "6 6 6 6", spacing = "2", childForceExpandHeight = "false",
+                             childForceExpandWidth = "true" }, sections),
+    }),
+    -- which version of the panels this is (see Rulebook_built)
+    el("Panel", { id = id(viewer, "V" .. RULEBOOK_UI_VERSION), active = "false" }),
+  })
+end
+
+-- are this version's panels in Global's UI (built this session, or kept in the save)?
+function Rulebook_built()
+  for _, element in ipairs(UI.getXmlTable() or {}) do
+    if element.attributes and element.attributes.id == id("Shared") then
+      for _, child in ipairs(element.children or {}) do
+        if child.attributes and child.attributes.id == id("Shared", "V" .. RULEBOOK_UI_VERSION) then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+-- add every viewer's panel to Global's UI (replacing panels of an older version kept in a
+-- save), then call `after` once TTS has rebuilt it
+function Rulebook_build(after)
+  if Rulebook_built() then
+    after()
+    return
+  end
+  local xml = {}
+  for _, element in ipairs(UI.getXmlTable() or {}) do
+    local elementId = element.attributes and element.attributes.id or ""
+    if string.sub(elementId, 1, 9) ~= "Rulebook_" then table.insert(xml, element) end
+  end
+  for _, viewer in ipairs(RULEBOOK_VIEWERS) do table.insert(xml, panel(viewer)) end
+  UI.setXmlTable(xml, UI.getCustomAssets())
+  Wait.condition(after, function() return not UI.loading end)
+end
+
+-- show the viewer's page and zoom
+function Rulebook_update(viewer)
+  local s = state(viewer)
+  local size = s.zoom and RULEBOOK_ZOOM or RULEBOOK_FIT
+  local width = panelWidth(s.zoom)
+  local scrollWidth = s.zoom and (RULEBOOK_ZOOM.width + RULEBOOK_SCROLLBAR) or RULEBOOK_FIT.width
+  UI.setAttribute(id(viewer), "width", tostring(width))
+  UI.setAttribute(id(viewer, "Bar"), "width", tostring(width - 2 * RULEBOOK_PAD))
+  UI.setAttribute(id(viewer, "Scroll"), "width", tostring(scrollWidth))
+  UI.setAttribute(id(viewer, "Content"), "height", tostring(size.height))
+  UI.setAttribute(id(viewer, "Image"), "image", string.format(RULEBOOK_ASSET, s.page))
+  UI.setAttribute(id(viewer, "Scroll"), "verticalNormalizedPosition", "1")   -- back to the top
+  UI.setValue(id(viewer, "PageText"), s.page .. " / " .. RULEBOOK_PAGES)
+  UI.setValue(id(viewer, "Zoom"), s.zoom and "Fit" or "Zoom")
+  UI.setAttribute(id(viewer, "Sections"), "active", s.sections and "true" or "false")
+end
+
+function Rulebook_open(viewer)
+  Rulebook_build(function()
+    local s = state(viewer)
+    s.open = true
+    Rulebook_update(viewer)
+    UI.setAttribute(id(viewer), "active", "true")
+  end)
+end
+
+local function viewerOf(value)
+  for _, viewer in ipairs(RULEBOOK_VIEWERS) do
+    if viewer == value then return viewer end
+  end
+  return nil
+end
+
+local function turn(viewer, page)
+  local s = state(viewer)
+  s.page = math.max(1, math.min(RULEBOOK_PAGES, page))
+  s.sections = false
+  Rulebook_update(viewer)
+end
+
+--------------------------------------------------------------------------------
+-- onClick of the panel's buttons; the value is the viewer ("Red", "Shared")
+
+function Rulebook_close(player, value)
+  local viewer = viewerOf(value)
+  if viewer == nil then return end
+  local s = state(viewer)
+  s.open = false
+  s.sections = false
+  UI.setAttribute(id(viewer, "Sections"), "active", "false")
+  UI.setAttribute(id(viewer), "active", "false")
+end
+
+function Rulebook_prev(player, value)
+  local viewer = viewerOf(value)
+  if viewer ~= nil then turn(viewer, state(viewer).page - 1) end
+end
+
+function Rulebook_next(player, value)
+  local viewer = viewerOf(value)
+  if viewer ~= nil then turn(viewer, state(viewer).page + 1) end
+end
+
+function Rulebook_zoom(player, value)
+  local viewer = viewerOf(value)
+  if viewer == nil then return end
+  local s = state(viewer)
+  s.zoom = not s.zoom
+  Rulebook_update(viewer)
+end
+
+function Rulebook_toggleSections(player, value)
+  local viewer = viewerOf(value)
+  if viewer == nil then return end
+  local s = state(viewer)
+  s.sections = not s.sections
+  UI.setAttribute(id(viewer, "Sections"), "active", s.sections and "true" or "false")
+end
+
+-- value: "<viewer>_<page>", e.g. "Red_18"
+function Rulebook_section(player, value)
+  local name, page = string.match(value or "", "^(%a+)_(%d+)$")
+  local viewer = viewerOf(name)
+  if viewer ~= nil then turn(viewer, tonumber(page)) end
+end

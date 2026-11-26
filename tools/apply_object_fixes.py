@@ -26,7 +26,7 @@ Fixes:
                          hand, mirrored for the far side of the table). The Traitor tile is tagged
                          "Traitor" and snaps to snap points, so it only snaps to these spots.
                          Snap points show no text, so each spot gets a locked 3D text "Traitor"
-                         lying on the table just beyond it (TRAITOR_LABEL_GUIDS, GMNotes
+                         lying on the table in the middle of it, under the tile (TRAITOR_LABEL_GUIDS, GMNotes
                          "TraitorLabel <Color>"), readable from that seat.
   muon-source-labels     Every player board (except deprecated Pyxis Unity) shows a small, faint
                          "Muon source" text on each ship's Muon Source spot (snap points 11, 18,
@@ -37,6 +37,18 @@ Fixes:
                          GENERATED_MARKER, so tools/tts_scripts.py doesn't treat it as a script.
                          Scoring (scripts/include/Score.ttslua) reads the Traitor's holder from
                          the spot it lies on.
+  rulebook               The two big Rulebook PDFs (RULEBOOK_PDF_GUIDS) are replaced by small
+                         locked tiles showing the cover (RULEBOOK_TILE_GUIDS, GMNotes "Rulebook"),
+                         one per long side of the table. scripts/include/Rulebook.ttslua gives
+                         them a button that opens the rulebook on screen. The 32 pages are UI
+                         assets "Rulebook01".."Rulebook32": each page's Steam Cloud URL in
+                         RULEBOOK_PAGE_URLS, or for a page not uploaded yet its image in
+                         assets/rulebook/ (git-ignored, see README) as a local file:/// URL.
+                         If a page has neither, the rule does nothing and the PDFs stay.
+  dice-bags              The two sets of dice bags (Ion, Plasma, Soliton, Antimatter, Rift) lie
+                         in a column at the combat zone's end of each long side, where the
+                         Rulebook PDFs were (DICE_BAG_COLUMN), Ion nearest the seats. They were
+                         in rows in the middle of each long side.
 
 Only the values these rules touch change; the rest of the mod file stays byte-for-byte identical.
 """
@@ -80,10 +92,63 @@ MUON_LABEL_LIFT = 1               # UI units above the board's top surface (a bo
                                   # lying on the spot covers it
 MUON_LABEL_SIZE = (240, 140)      # width, height before the 0.1 scale: a 24 x 14 box (a cell is 23 apart)
 TRAITOR_LABEL_GUIDS = ('b7a101', 'b7a102', 'b7a103', 'b7a104', 'b7a105', 'b7a106')  # in SEAT_COLORS order
-TRAITOR_LABEL_GAP = 3.2   # from the spot toward the table centre: beyond the tile, clear of the board
+TRAITOR_LABEL_GAP = 0.0   # from the spot toward the table centre: 0 = in the middle of the spot
 TRAITOR_LABEL_SIZE = 48
 SETUP_BACKGROUND_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                      'assets', 'emperor_background.jpg')
+RULEBOOK_PDF_GUIDS = ('c055de', '24ffaa')     # the original mod's two Rulebook PDFs
+RULEBOOK_TILE_GUIDS = ('b7b001', 'b7b002')
+# where the PDFs lay, one per long side: (x, z, rotY), turned like the PDFs to face that side
+RULEBOOK_TILE_SPOTS = ((-45.21, 26.0, 0.0), (-45.21, -26.0, 180.0))
+RULEBOOK_TILE_SCALE = 2.0     # about 4 x 5.7 (the PDFs were 11.6 x 16.4)
+RULEBOOK_TILE_NOTE = 'Rulebook'   # GMNotes: Rulebook.ttslua finds the tiles by it
+RULEBOOK_PAGES = 32
+RULEBOOK_ASSET = 'Rulebook{:02d}'
+# the page images (assets/rulebook/page-01.jpg ...) uploaded to Steam Cloud: page -> URL.
+# A page without one uses its local file (a file:/// URL, only on the machine that built the mod).
+RULEBOOK_PAGE_URLS = {
+    1: 'https://steamusercontent-a.akamaihd.net/ugc/15377515069704833185/6485ED60E0D8F0BF717A2DE0A1259EB6DC299AF7/',
+    2: 'https://steamusercontent-a.akamaihd.net/ugc/16780371824131168342/89D2986C034DB97B2C5E1DD7FC78E1482EA58B8D/',
+    3: 'https://steamusercontent-a.akamaihd.net/ugc/14453037334833060171/E32219408EEE18432C12DF965DA196D9A56C003C/',
+    4: 'https://steamusercontent-a.akamaihd.net/ugc/16565258212438665665/02E6B210A9E3BA311CA54D44DEBE550B40E8A3DD/',
+    5: 'https://steamusercontent-a.akamaihd.net/ugc/15005467199493659785/5CE83310331FC95208D4FAE2244FE487100F9DA6/',
+    6: 'https://steamusercontent-a.akamaihd.net/ugc/14459871804994455712/4823942607DD629E7372FA367E854E74204EA110/',
+    7: 'https://steamusercontent-a.akamaihd.net/ugc/12856901005313561787/82A376F1EFB6DB2F8CDA2DBDACBD97C248AD37F7/',
+    8: 'https://steamusercontent-a.akamaihd.net/ugc/12542145536913851612/000B6C1A4A8B840626E07A973A61AAE61BD93C02/',
+    9: 'https://steamusercontent-a.akamaihd.net/ugc/14624406172694300517/9032930645926F42C45A797CFE3C65AF9E3841C3/',
+    10: 'https://steamusercontent-a.akamaihd.net/ugc/11856971825289528875/71DF3578835D93E953E121F4B32A5A0DE0A245B7/',
+    11: 'https://steamusercontent-a.akamaihd.net/ugc/11008757076257638316/FD73C5B2C49A0D5E14C60248590D12B2950ED662/',
+    12: 'https://steamusercontent-a.akamaihd.net/ugc/17666731815543565192/BAFBE484A01EAA594284F9D7CAF52887B5803C44/',
+    13: 'https://steamusercontent-a.akamaihd.net/ugc/14153699442115854979/083A4F84F5568830413A5E6E3A98006B7E3CA2D4/',
+    14: 'https://steamusercontent-a.akamaihd.net/ugc/12388734324393012011/EC7BEAEEEBC9DAF43C41A323C0C29735FAA1C13F/',
+    15: 'https://steamusercontent-a.akamaihd.net/ugc/17336511813487563801/193F2D28C827AC8240AB36A36ED110AFE08C84D4/',
+    16: 'https://steamusercontent-a.akamaihd.net/ugc/12819679151365399443/38C6798066CD0627BCAD1878F3C033977A2C11F7/',
+    17: 'https://steamusercontent-a.akamaihd.net/ugc/9260593931331037586/0512005E2045EFAF66C2E6CB8E81FDCC389F5279/',
+    18: 'https://steamusercontent-a.akamaihd.net/ugc/10562113576922221184/6D24BF729B46FDE7FD587E55866B2375D328606D/',
+    19: 'https://steamusercontent-a.akamaihd.net/ugc/17519200778101037131/E440EFDB14BFFF2052182EBB0653B020BDB3022B/',
+    20: 'https://steamusercontent-a.akamaihd.net/ugc/16047297254393271395/2FF9B5CFA453F0C5115B901CCBAFD79CD08D3402/',
+    21: 'https://steamusercontent-a.akamaihd.net/ugc/16653039266951442533/57C24E470DC2880B683F9AB39163F8AD57506C3D/',
+    22: 'https://steamusercontent-a.akamaihd.net/ugc/14534115509230634094/4ADF8A4EF53ED874F74E74ADDFAB216C06AD4135/',
+    23: 'https://steamusercontent-a.akamaihd.net/ugc/14105829570728464126/52EFE9BABE12D903CDF04B23A808EC31127C654C/',
+    24: 'https://steamusercontent-a.akamaihd.net/ugc/16422991501103330289/2AA08D2346EF917B8AF2B3A8486E18ECD81D337C/',
+    25: 'https://steamusercontent-a.akamaihd.net/ugc/12762077803608909569/AA78AA7508DBD681580018445900066801056F64/',
+    26: 'https://steamusercontent-a.akamaihd.net/ugc/17267773392151811420/3DA8ABD17937413218AD71428475FEE07EBBD259/',
+    27: 'https://steamusercontent-a.akamaihd.net/ugc/12698460081826544101/E83063CC0AA365356BC9423FD6F919E1CB8CA7F4/',
+    28: 'https://steamusercontent-a.akamaihd.net/ugc/9583546036811186033/644A9B72E435A5B0A8F83D1D8176F692954BE8F4/',
+    29: 'https://steamusercontent-a.akamaihd.net/ugc/10470341451568804015/71AF774CFACA5964EAAE33E8F4CF67609F3F62C9/',
+    30: 'https://steamusercontent-a.akamaihd.net/ugc/17281021655857794524/53D00BFE449AC6B195E498AEC2513DFD20EBA714/',
+    31: 'https://steamusercontent-a.akamaihd.net/ugc/15156364462949804828/E30E835694D437DF4F2BA66A923AD72FD9F3048E/',
+    32: 'https://steamusercontent-a.akamaihd.net/ugc/11381325186915709154/A4FE438C1E010BB340ADD350F4BF68DE331D5A79/',
+}
+RULEBOOK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'rulebook')
+# the dice bags of each long side (+z, -z), Ion, Plasma, Soliton, Antimatter, Rift (the sets
+# in scripts/include/CombatZone.ttslua's COMBAT_ZONE_DICE_BAGS)
+DICE_BAGS = {1: ('2388bc', '740d72', 'fe326f', '6a7479', '1ec1c3'),
+             -1: ('57e8f9', 'a3c3b3', '8ab8d5', '0bea7c', '79897f')}
+# x of the column (left of the Rulebook tile, which spans x -47.2..-43.2), and |z| of the
+# bags from the seats inward: the same 2.58 apart as before, clear of the Galactic Events
+# bag (z 15.2) and the Traitor label at z -32.9
+DICE_BAG_COLUMN = (-49.8, (30.2, 27.62, 25.04, 22.46, 19.88))
 
 
 def walk(objects):
@@ -141,12 +206,16 @@ def reputation_bag_random(mod):
 def setup_background_url():
     if SETUP_BACKGROUND_URL:
         return SETUP_BACKGROUND_URL
-    if os.path.exists(SETUP_BACKGROUND_FILE):
-        # file:///C:/... on Windows, file:///Users/... on macOS. Spaces stay as they are:
-        # TTS doesn't decode %20 in a file URL.
-        path = SETUP_BACKGROUND_FILE.replace(os.sep, '/')
-        return 'file://' + (path if path.startswith('/') else '/' + path)
-    return None
+    return local_file_url(SETUP_BACKGROUND_FILE)
+
+
+def local_file_url(path):
+    """file:///C:/... on Windows, file:///Users/... on macOS, or None if the file isn't there.
+    Spaces stay as they are: TTS doesn't decode %20 in a file URL."""
+    if not os.path.exists(path):
+        return None
+    path = path.replace(os.sep, '/')
+    return 'file://' + (path if path.startswith('/') else '/' + path)
 
 
 def setup_background(mod):
@@ -304,22 +373,27 @@ def add_traitor_tag(raw):
 
 def set_traitor_labels(raw, labels):
     """Replace the label objects (or add them) at the end of ObjectStates; return the new raw text."""
-    start, end = top_level_span(raw, 'ObjectStates')
+    return replace_objects(raw, labels.keys(), labels.values())
+
+
+def replace_objects(raw, drop, add):
+    """Remove the top-level objects with the GUIDs in `drop` (those that are there), then add the
+    objects in `add` at the end of ObjectStates; return the new raw text."""
     mod = json.loads(raw)
-    kept = [o for o in mod['ObjectStates'] if o.get('GUID') not in labels]
-    if len(kept) != len(mod['ObjectStates']):
-        # labels already there but different: drop their text, element by element
-        for guid in labels:
-            if any(o.get('GUID') == guid for o in mod['ObjectStates']):
-                s, _ = object_span(raw, guid)
-                begin = raw.rindex('{', start, s)
-                _, finish = json.JSONDecoder().raw_decode(raw, begin)
-                before = raw.rindex(',', start, begin)  # the comma before this element
-                raw = raw[:before] + raw[finish:]
-                start, end = top_level_span(raw, 'ObjectStates')
+    present = {o.get('GUID') for o in mod['ObjectStates']}
+    for guid in drop:
+        if guid not in present:
+            continue
+        start, end = top_level_span(raw, 'ObjectStates')
+        s, _ = object_span(raw, guid)
+        begin = raw.rindex('{', start, s)
+        _, finish = json.JSONDecoder().raw_decode(raw, begin)
+        before = raw.rindex(',', start, begin)  # the comma before this element
+        raw = raw[:before] + raw[finish:]
+    start, end = top_level_span(raw, 'ObjectStates')
     close = raw.rindex(']', start, end)
     body = raw[:close].rstrip()
-    text = ''.join(',\n    ' + json.dumps(o, indent=2).replace('\n', '\n    ') for o in labels.values())
+    text = ''.join(',\n    ' + json.dumps(o, indent=2).replace('\n', '\n    ') for o in add)
     return body + text + '\n  ' + raw[close:]
 
 
@@ -364,7 +438,73 @@ def set_board_xml(raw, guid, xml):
     return raw[:at + len(key)] + json.dumps(xml, ensure_ascii=False) + raw[value_end:]
 
 
+def rulebook_page_urls():
+    """The 32 page URLs, each Steam Cloud's or else the local image's; None if any is missing."""
+    urls = [RULEBOOK_PAGE_URLS.get(n) or local_file_url(os.path.join(RULEBOOK_DIR, f'page-{n:02d}.jpg'))
+            for n in range(1, RULEBOOK_PAGES + 1)]
+    return None if None in urls else urls
+
+
+def rulebook_tiles(cover_url):
+    """The tile objects there should be: GUID -> object (a locked tile showing the cover)."""
+    tiles = {}
+    for guid, (x, z, rot_y) in zip(RULEBOOK_TILE_GUIDS, RULEBOOK_TILE_SPOTS):
+        tiles[guid] = {
+            'GUID': guid, 'Name': 'Custom_Tile',
+            'Transform': {'posX': x, 'posY': TABLE_Y, 'posZ': z, 'rotX': 0.0, 'rotY': rot_y, 'rotZ': 0.0,
+                          'scaleX': RULEBOOK_TILE_SCALE, 'scaleY': 1.0, 'scaleZ': RULEBOOK_TILE_SCALE},
+            'Nickname': 'Rulebook', 'Description': 'Click the button to read the rulebook on your screen.',
+            'GMNotes': RULEBOOK_TILE_NOTE,
+            'ColorDiffuse': {'r': 1.0, 'g': 1.0, 'b': 1.0},
+            'Locked': True, 'Grid': False, 'Snap': False, 'Autoraise': True, 'Sticky': False,
+            'Tooltip': True, 'GridProjection': False, 'Hands': False,
+            'CustomImage': {'ImageURL': cover_url, 'ImageSecondaryURL': cover_url, 'ImageScalar': 1.0,
+                            'WidthScale': 0.0,
+                            'CustomTile': {'Type': 0, 'Thickness': 0.2, 'Stackable': False, 'Stretch': True}},
+            'LuaScript': '', 'LuaScriptState': '', 'XmlUI': '',
+        }
+    return tiles
+
+
+def dice_bags(mod):
+    objects = {o.get('GUID'): o for o in mod['ObjectStates']}
+    x, zs = DICE_BAG_COLUMN
+    edits = []
+    for sign, guids in DICE_BAGS.items():
+        for guid, z in zip(guids, zs):
+            t = objects[guid]['Transform']
+            for field, value in (('posX', x), ('posZ', sign * z)):
+                if t[field] != value:
+                    edits.append((guid, 'Transform', field, repr(value)))
+    return edits
+
+
+def rulebook(mod):
+    urls = rulebook_page_urls()
+    if urls is None:
+        print(f'  rulebook: no page images in {RULEBOOK_DIR} and no RULEBOOK_PAGE_URLS: '
+              'the PDFs stay (see README, "Rulebook pages")', file=sys.stderr)
+        return []
+    edits = []
+    assets = mod.get('CustomUIAssets') or []
+    names = {RULEBOOK_ASSET.format(n) for n in range(1, RULEBOOK_PAGES + 1)}
+    want = [a for a in assets if a.get('Name') not in names]
+    want += [{'Type': 0, 'Name': RULEBOOK_ASSET.format(n), 'URL': url} for n, url in enumerate(urls, 1)]
+    if sorted(map(json.dumps, want)) != sorted(map(json.dumps, assets)):
+        edits.append(('ui-assets', want))
+    objects = {o.get('GUID'): o for o in mod['ObjectStates']}
+    tiles = rulebook_tiles(urls[0])
+    stale = [g for g in RULEBOOK_PDF_GUIDS if g in objects]
+    stale += [g for g, tile in tiles.items()
+              if json.dumps(objects.get(g), sort_keys=True) != json.dumps(tile, sort_keys=True)]
+    if stale:
+        edits.append(('objects', stale, [tiles[g] for g in tiles if g in stale]))
+    return edits
+
+
 def apply_edit(raw, edit):
+    if edit[0] == 'objects':
+        return replace_objects(raw, edit[1], edit[2])
     if edit[0] == 'board-xml':
         return set_board_xml(raw, edit[1], edit[2])
     if edit[0] == 'traitor-labels':
@@ -384,7 +524,8 @@ def apply_edit(raw, edit):
 
 FIXES = [('sector-tiles-aligned', sector_tiles_aligned), ('reputation-bag-random', reputation_bag_random),
          ('setup-background', setup_background), ('mod-name', mod_name), ('traitor-spots', traitor_spots),
-         ('muon-source-labels', muon_source_labels)]
+         ('muon-source-labels', muon_source_labels), ('rulebook', rulebook),
+         ('dice-bags', dice_bags)]
 
 
 def main():
@@ -403,6 +544,8 @@ def main():
         print(f'{name:<24} {len(edits):>3} value(s) to change' if edits else f'{name:<24} already applied')
         for edit in edits:
             raw = apply_edit(raw, edit)
+        if edits:
+            mod = json.loads(raw)  # the next rule sees this one's changes (two rules set UI assets)
         total += len(edits)
 
     if args.check:
